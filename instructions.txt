@@ -1,0 +1,37 @@
+
+Objective: Terraform an Azure VM for Microsoft MXC (Microsoft Execution
+Containers), then run the combination of OpenClaw + MXC on it.
+
+Definitions (confirmed):
+- MXC = Microsoft Execution Containers (announced at Build 2026, June 2, 2026):
+  a policy-driven, OS-level sandbox for running AI agents / untrusted code.
+  SDK: @microsoft/mxc-sdk (TypeScript), native binary in repo microsoft/mxc.
+- OpenClaw = the open-source OpenClaw AI agent (an MXC launch partner), NOT the
+  Captain Claw game. Repo: openclaw/openclaw.
+- Integration point: OpenClaw runs the agent; MXC sandboxes the agent's
+  tool/code execution.
+
+Suggested default (target setup):
+- OS: Windows 11 Enterprise 24H2 (MXC requires Windows 11 24H2+, build 26100;
+  Windows Server is not supported for the client-only MXC backends).
+- VM size: Standard_D4s_v5 (nested-virtualization capable; future-proofs the
+  experimental micro-VM / hyperlight backends).
+- Runtime: install Node 24 (OpenClaw recommends 24; 22.19+ minimum) + the MXC
+  SDK natively (npm install @microsoft/mxc-sdk; prebuilt binary bundled).
+- Keep WSL2 available on the VM for later use (e.g. OpenClaw daemon mode).
+
+Option A (chosen approach):
+- Run OpenClaw natively on Windows with the MXC `processcontainer` backend
+  (stable, no experimental flag, no nested virtualization required) for the
+  simplest working integration.
+- Run the OpenClaw agent in the foreground / via Task Scheduler instead of
+  daemon mode (native Windows does not support OpenClaw's --install-daemon;
+  that requires WSL2).
+
+Notes / caveats:
+- Confirm the Azure subscription can deploy a Windows 11 Enterprise 24H2 image
+  (typically Dev/Test subscription or via Azure Virtual Desktop licensing).
+- MXC is early preview (current schema 0.6.0-alpha); per the repo, no MXC
+  profiles should be treated as security boundaries yet. Pin to the current
+  repo/preview state when building.
+- OpenClaw needs a gateway token + an AI provider key (OpenAI/Anthropic/etc.).

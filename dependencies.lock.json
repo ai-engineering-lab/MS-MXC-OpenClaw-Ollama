@@ -1,0 +1,22 @@
+{
+  "pinned_at": "2026-06-05",
+  "runtime": {
+    "@microsoft/mxc-sdk": "0.6.1",
+    "openclaw": "2026.6.1",
+    "node": "24.10.0",
+    "ollama": "0.30.5",
+    "git-for-windows": "2.49.0.windows.1",
+    "ollama-model": "llama3.2:3b"
+  },
+  "terraform_providers": {
+    "azurerm": "4.76.0",
+    "random": "3.9.0"
+  },
+  "notes": {
+    "mxc_sdk": "Alpha preview; bump only after testing against microsoft/mxc release notes.",
+    "openclaw": "CalVer npm package; set openclaw_npm_package in terraform.tfvars.",
+    "ollama": "GitHub release tag without leading v in terraform variable (e.g. 0.30.5).",
+    "node": "Full semver passed to bootstrap (e.g. 24.10.0).",
+    "windows_image": "Azure marketplace version remains 'latest' unless overridden in terraform.tfvars."
+  }
+}

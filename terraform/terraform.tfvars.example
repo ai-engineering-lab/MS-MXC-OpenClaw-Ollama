@@ -1,0 +1,34 @@
+# Copy to terraform.tfvars and fill in values before apply.
+# cp terraform.tfvars.example terraform.tfvars
+
+# subscription_id = "00000000-0000-0000-0000-000000000000"
+location = "canadacentral"
+
+admin_password = "ChangeMe-StrongPassw0rd!"
+
+# Azure for Students: DSv5 quota may be 0; DSv3 often works.
+vm_size = "Standard_D4s_v3"
+
+# Restrict inbound access in non-lab environments.
+allowed_rdp_cidr     = "203.0.113.10/32"
+allowed_gateway_cidr = "203.0.113.10/32"
+
+# If win11-24h2-ent-g2 is unavailable in your subscription/region, try:
+# windows_image = {
+#   publisher = "MicrosoftWindowsDesktop"
+#   offer     = "windows-11"
+#   sku       = "win11-24h2-ent"
+#   version   = "latest"
+# }
+
+# Pinned runtime dependencies (keep in sync with dependencies.lock.json)
+mxc_sdk_version           = "0.6.1"
+openclaw_npm_package      = "openclaw@2026.6.1"
+openclaw_version          = "2026.6.1"
+node_version              = "24.10.0"
+ollama_version            = "0.30.5"
+git_for_windows_version   = "2.49.0.windows.1"
+
+# Local LLM via Ollama (no OpenAI/Anthropic key required)
+install_ollama = true
+ollama_model   = "llama3.2:3b"
