@@ -1,6 +1,6 @@
 #!/bin/bash
 # OpenClaw + Ollama + MXC bootstrap for Ubuntu Linux (EC2 user_data or manual run).
-# Linux MXC uses the bubblewrap backend by default (see microsoft/mxc).
+# Linux MXC uses the bubblewrap backend by default (see ai-engineering-lab/ms-mxc).
 set -euo pipefail
 
 NODE_VERSION="${NODE_VERSION:?NODE_VERSION required}"
@@ -10,11 +10,14 @@ OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2:1b}"
 OLLAMA_VERSION="${OLLAMA_VERSION:?OLLAMA_VERSION required}"
 INSTALL_OLLAMA="${INSTALL_OLLAMA:-true}"
 DISABLE_CONTROL_UI_DEVICE_AUTH="${DISABLE_CONTROL_UI_DEVICE_AUTH:-true}"
-MXC_SDK_VERSION="${MXC_SDK_VERSION:-0.6.1}"
+MXC_GIT_REPO="${MXC_GIT_REPO:-https://github.com/ai-engineering-lab/ms-mxc.git}"
+MXC_GIT_REF="${MXC_GIT_REF:-c1027bc5d750d161e81eb2b6a236d5772af5a3ac}"
 MXC_BACKEND="${MXC_BACKEND:-bubblewrap}"
 INSTALL_MXC="${INSTALL_MXC:-true}"
+MXC_SDK_PACKAGE="@microsoft/mxc-sdk"
 
 BOOTSTRAP_ROOT="/var/log/openclaw-bootstrap"
+MXC_BUILD_DIR="${BOOTSTRAP_ROOT}/ms-mxc-src"
 OPENCLAW_ROOT="/opt/openclaw"
 CONFIG_DIR="${OPENCLAW_ROOT}/config"
 STATE_DIR="${CONFIG_DIR}/state"
@@ -104,6 +107,7 @@ install_openclaw() {
 
 install_mxc_runtime() {
   log "Installing MXC Linux runtime for backend: ${MXC_BACKEND}"
+  apt-get install -y git curl build-essential pkg-config liblxc-dev
   if [[ "${MXC_BACKEND}" == "lxc" ]]; then
     apt-get install -y lxc lxc-templates uidmap
   else
@@ -137,15 +141,82 @@ EOF
   fi
 }
 
-install_mxc_sdk() {
-  log "Installing @microsoft/mxc-sdk@${MXC_SDK_VERSION}"
-  if npm install -g "@microsoft/mxc-sdk@${MXC_SDK_VERSION}"; then
-    refresh_path
-    log "MXC SDK installed at $(npm root -g)/@microsoft/mxc-sdk"
+ensure_rust_toolchain() {
+  export HOME="${HOME:-/root}"
+  export CARGO_HOME="${CARGO_HOME:-/root/.cargo}"
+  export RUSTUP_HOME="${RUSTUP_HOME:-/root/.rustup}"
+  if command -v cargo >/dev/null 2>&1; then
+    log "Rust already installed: $(cargo --version 2>/dev/null || true)"
+    return 0
+  fi
+  log "Installing Rust toolchain 1.93 for MXC build"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.93 --profile minimal
+  if [[ -f "${CARGO_HOME}/env" ]]; then
+    set +u
+    # shellcheck disable=SC1091
+    source "${CARGO_HOME}/env"
+    set -u
+  fi
+  export PATH="${CARGO_HOME}/bin:${PATH}"
+  log "Rust installed: $(cargo --version)"
+}
+
+clone_mxc_repo() {
+  log "Cloning MXC from ${MXC_GIT_REPO} @ ${MXC_GIT_REF}"
+  rm -rf "$MXC_BUILD_DIR"
+  if git clone --depth 1 --branch "$MXC_GIT_REF" "$MXC_GIT_REPO" "$MXC_BUILD_DIR" >>"$LOG_FILE" 2>&1; then
+    return 0
+  fi
+  rm -rf "$MXC_BUILD_DIR"
+  git clone "$MXC_GIT_REPO" "$MXC_BUILD_DIR" >>"$LOG_FILE" 2>&1
+  git -C "$MXC_BUILD_DIR" checkout "$MXC_GIT_REF" >>"$LOG_FILE" 2>&1
+}
+
+build_mxc_linux_binaries() {
+  local arch_dir target_triple src_dir bin_dir
+  src_dir="${MXC_BUILD_DIR}/src"
+  arch_dir="$(resolve_mxc_arch_dir)" || return 1
+  case "$(uname -m)" in
+    x86_64 | amd64) target_triple="x86_64-unknown-linux-gnu" ;;
+    aarch64 | arm64) target_triple="aarch64-unknown-linux-gnu" ;;
+    *) log "ERROR: unsupported architecture for MXC build: $(uname -m)"; return 1 ;;
+  esac
+  bin_dir="${MXC_BUILD_DIR}/sdk/bin/${arch_dir}"
+  mkdir -p "$bin_dir"
+
+  log "Building MXC Rust binaries (release) for ${target_triple}"
+  (
+    cd "$src_dir"
+    cargo build --release -p lxc -p lxc_common -p wxc_common -p bwrap_common -p linux_test_proxy
+  ) >>"$LOG_FILE" 2>&1
+
+  if [[ -x "${src_dir}/target/release/lxc-exec" ]]; then
+    install -m 0755 "${src_dir}/target/release/lxc-exec" "${bin_dir}/lxc-exec"
+  elif [[ -x "${src_dir}/target/${target_triple}/release/lxc-exec" ]]; then
+    install -m 0755 "${src_dir}/target/${target_triple}/release/lxc-exec" "${bin_dir}/lxc-exec"
   else
-    log "WARNING: npm install -g @microsoft/mxc-sdk@${MXC_SDK_VERSION} failed"
+    log "ERROR: lxc-exec binary not found after MXC build"
     return 1
   fi
+  log "MXC native binary installed: ${bin_dir}/lxc-exec"
+}
+
+install_mxc_sdk() {
+  log "Installing ${MXC_SDK_PACKAGE} from ${MXC_GIT_REPO}#${MXC_GIT_REF}"
+  ensure_rust_toolchain
+  clone_mxc_repo
+  build_mxc_linux_binaries
+
+  log "Building TypeScript SDK in ${MXC_BUILD_DIR}/sdk"
+  (
+    cd "${MXC_BUILD_DIR}/sdk"
+    npm install --ignore-scripts >>"$LOG_FILE" 2>&1
+    npm run build >>"$LOG_FILE" 2>&1
+  )
+
+  npm install -g "${MXC_BUILD_DIR}/sdk" >>"$LOG_FILE" 2>&1
+  refresh_path
+  log "MXC SDK installed at $(npm root -g)/${MXC_SDK_PACKAGE}"
 }
 
 resolve_mxc_arch_dir() {
@@ -161,7 +232,7 @@ resolve_mxc_arch_dir() {
 
 resolve_lxc_exec() {
   local sdk_root arch_dir candidate
-  sdk_root="$(npm root -g)/@microsoft/mxc-sdk"
+  sdk_root="$(npm root -g)/${MXC_SDK_PACKAGE}"
   arch_dir="$(resolve_mxc_arch_dir)" || return 1
   candidate="${sdk_root}/bin/${arch_dir}/lxc-exec"
   if [[ -x "$candidate" ]]; then
@@ -530,7 +601,7 @@ main() {
   touch "$LOG_FILE"
 
   log "Starting OpenClaw + Ollama + MXC Linux bootstrap"
-  log "Pinned versions: Node v${NODE_VERSION}, MXC SDK ${MXC_SDK_VERSION}, OpenClaw ${OPENCLAW_PACKAGE}, Ollama v${OLLAMA_VERSION}, backend ${MXC_BACKEND}"
+  log "Pinned versions: Node v${NODE_VERSION}, MXC ${MXC_GIT_REPO}#${MXC_GIT_REF}, OpenClaw ${OPENCLAW_PACKAGE}, Ollama v${OLLAMA_VERSION}, backend ${MXC_BACKEND}"
 
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -y

@@ -41,7 +41,9 @@ output "ollama_model" {
 output "pinned_dependencies" {
   description = "Pinned runtime dependency versions deployed by bootstrap. See dependencies.lock.json."
   value = {
-    mxc_sdk           = var.mxc_sdk_version
+    mxc_git_repo      = var.mxc_git_repo
+    mxc_git_ref       = var.mxc_git_ref
+    mxc_sdk_package   = "@microsoft/mxc-sdk"
     openclaw          = var.openclaw_version
     openclaw_npm_spec = var.openclaw_npm_package
     node              = var.node_version

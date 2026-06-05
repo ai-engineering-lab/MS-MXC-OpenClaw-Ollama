@@ -22,7 +22,8 @@ allowed_gateway_cidr = "203.0.113.10/32"
 # }
 
 # Pinned runtime dependencies (keep in sync with dependencies.lock.json)
-mxc_sdk_version           = "0.6.1"
+mxc_git_repo              = "https://github.com/ai-engineering-lab/ms-mxc.git"
+mxc_git_ref               = "c1027bc5d750d161e81eb2b6a236d5772af5a3ac"
 openclaw_npm_package      = "openclaw@2026.6.1"
 openclaw_version          = "2026.6.1"
 node_version              = "24.10.0"

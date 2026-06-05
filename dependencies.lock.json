@@ -1,12 +1,18 @@
 {
   "pinned_at": "2026-06-05",
   "runtime": {
-    "@microsoft/mxc-sdk": "0.6.1",
     "openclaw": "2026.6.1",
     "node": "24.10.0",
     "ollama": "0.30.5",
     "git-for-windows": "2.49.0.windows.1",
     "ollama-model": "llama3.2:3b"
+  },
+  "mxc": {
+    "git_repo": "https://github.com/ai-engineering-lab/ms-mxc.git",
+    "git_ref": "c1027bc5d750d161e81eb2b6a236d5772af5a3ac",
+    "sdk_package": "@microsoft/mxc-sdk",
+    "sdk_version": "0.6.1",
+    "schema": "0.6.0-alpha"
   },
   "terraform_providers": {
     "azurerm": "4.76.0",
@@ -28,7 +34,7 @@
     }
   },
   "notes": {
-    "mxc_sdk": "Alpha preview; bump only after testing against microsoft/mxc release notes.",
+    "mxc": "Built from ai-engineering-lab/ms-mxc (fork of microsoft/mxc) at git_ref; npm global package remains @microsoft/mxc-sdk.",
     "openclaw": "CalVer npm package; set openclaw_npm_package in terraform.tfvars.",
     "ollama": "GitHub release tag without leading v in terraform variable (e.g. 0.30.5). Linux uses ollama-linux-amd64.tar.zst; Windows uses ollama-windows-amd64.zip.",
     "node": "Full semver passed to bootstrap (e.g. 24.10.0).",

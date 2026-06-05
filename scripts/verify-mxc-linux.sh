@@ -26,7 +26,7 @@ if [[ "$userns" != "1" ]]; then
 fi
 
 if ! npm root -g >/dev/null 2>&1; then
-  echo "ERROR: npm global root unavailable; install Node.js and @microsoft/mxc-sdk" >&2
+  echo "ERROR: npm global root unavailable; install Node.js and MXC (@microsoft/mxc-sdk from ms-mxc)" >&2
   exit 1
 fi
 

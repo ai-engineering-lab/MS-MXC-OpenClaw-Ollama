@@ -31,7 +31,9 @@ output "gateway_access_path" {
 output "pinned_dependencies" {
   description = "Pinned runtime dependency versions passed to bootstrap."
   value = {
-    mxc_sdk           = var.install_mxc ? var.mxc_sdk_version : null
+    mxc_git_repo      = var.install_mxc ? var.mxc_git_repo : null
+    mxc_git_ref       = var.install_mxc ? var.mxc_git_ref : null
+    mxc_sdk_package   = var.install_mxc ? "@microsoft/mxc-sdk" : null
     mxc_backend       = var.install_mxc ? var.mxc_backend : null
     openclaw          = var.openclaw_version
     openclaw_npm_spec = var.openclaw_npm_package
