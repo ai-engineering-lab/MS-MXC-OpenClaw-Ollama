@@ -17,7 +17,7 @@ Browser → OpenClaw Gateway → Agent → Ollama (llama3.2:1b)  ← local infer
 | ----- | ---- |
 | **OpenClaw** | Agent runtime and gateway Control UI |
 | **Ollama + llama3.2:1b** | Local LLM inference (tool-capable) |
-| **MXC (bubblewrap)** | Policy-driven Linux sandbox via `@microsoft/mxc-sdk` |
+| **MXC (bubblewrap)** | Policy-driven Linux sandbox via `@microsoft/mxc-sdk` (built from [ms-mxc](https://github.com/ai-engineering-lab/ms-mxc)) |
 | **Ubuntu 24.04 LTS** | EC2 host OS |
 | **AWS EC2** | Terraform-provisioned compute |
 
@@ -28,7 +28,7 @@ Ollama listens on **127.0.0.1:11434 only** — not exposed in the security group
 [Microsoft MXC](https://github.com/microsoft/mxc) supports Linux with the **bubblewrap** backend (default) or **lxc**. Bootstrap installs:
 
 - `bubblewrap` + `uidmap`
-- `@microsoft/mxc-sdk@0.6.1` (bundles `lxc-exec`)
+- MXC built from [ai-engineering-lab/ms-mxc](https://github.com/ai-engineering-lab/ms-mxc) (Rust + TypeScript SDK → global `@microsoft/mxc-sdk`)
 - Sample profiles in `/opt/openclaw/config/mxc/` (from [`config/mxc/`](../../config/mxc/))
 
 Verify after bootstrap:
@@ -87,7 +87,8 @@ Allow **20–40 minutes** on first boot (Node/npm install, MXC smoke test, Ollam
 | Gateway port | `18789` |
 | Ollama model | `llama3.2:1b` |
 | MXC backend | `bubblewrap` |
-| MXC SDK | `@microsoft/mxc-sdk@0.6.1` |
+| MXC source | [ai-engineering-lab/ms-mxc](https://github.com/ai-engineering-lab/ms-mxc) |
+| MXC SDK | `@microsoft/mxc-sdk` (built at bootstrap) |
 
 ## Destroy
 

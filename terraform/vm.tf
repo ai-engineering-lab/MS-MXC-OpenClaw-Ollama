@@ -53,7 +53,7 @@ resource "azurerm_virtual_machine_extension" "bootstrap" {
   })
 
   protected_settings = jsonencode({
-    commandToExecute = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File bootstrap.ps1 -NodeVersion ${var.node_version} -MxcSdkVersion ${var.mxc_sdk_version} -OpenClawPackage \"${var.openclaw_npm_package}\" -GatewayPort ${var.openclaw_gateway_port} -OllamaModel \"${var.ollama_model}\" -OllamaVersion ${var.ollama_version} -GitForWindowsVersion ${var.git_for_windows_version} -InstallOllama \"${lower(tostring(var.install_ollama))}\" -DisableControlUiDeviceAuth \"${lower(tostring(var.openclaw_control_ui_disable_device_auth))}\""
+    commandToExecute = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File bootstrap.ps1 -NodeVersion ${var.node_version} -MxcGitRepo \"${var.mxc_git_repo}\" -MxcGitRef \"${var.mxc_git_ref}\" -OpenClawPackage \"${var.openclaw_npm_package}\" -GatewayPort ${var.openclaw_gateway_port} -OllamaModel \"${var.ollama_model}\" -OllamaVersion ${var.ollama_version} -GitForWindowsVersion ${var.git_for_windows_version} -InstallOllama \"${lower(tostring(var.install_ollama))}\" -DisableControlUiDeviceAuth \"${lower(tostring(var.openclaw_control_ui_disable_device_auth))}\""
   })
 
   timeouts {

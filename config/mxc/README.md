@@ -1,6 +1,6 @@
 # MXC sandbox profiles (Linux)
 
-Sample [Microsoft Execution Containers (MXC)](https://github.com/microsoft/mxc) policy configs for **Ubuntu Linux** using the **bubblewrap** backend (default on Linux).
+Sample [Microsoft Execution Containers (MXC)](https://github.com/ai-engineering-lab/ms-mxc) policy configs for **Ubuntu Linux** using the **bubblewrap** backend (default on Linux).
 
 | File | Purpose |
 | ---- | ------- |
@@ -10,7 +10,7 @@ Sample [Microsoft Execution Containers (MXC)](https://github.com/microsoft/mxc) 
 ## Prerequisites on the host
 
 - `bubblewrap` (`bwrap`) installed
-- `@microsoft/mxc-sdk` npm package (bundles `lxc-exec` on Linux)
+- `@microsoft/mxc-sdk` npm package (built from [ai-engineering-lab/ms-mxc](https://github.com/ai-engineering-lab/ms-mxc) at bootstrap; bundles `lxc-exec` on Linux)
 - User namespaces enabled (`/proc/sys/kernel/unprivileged_userns_clone` = `1`)
 
 ## Smoke test
@@ -31,6 +31,6 @@ LXC_EXEC="$(npm root -g)/@microsoft/mxc-sdk/bin/${ARCH}/lxc-exec"
 
 ## OpenClaw integration
 
-OpenClaw runs the gateway on the host; MXC sandboxes **tool/code execution** invoked by the agent. Wire your OpenClaw tool runner to call `@microsoft/mxc-sdk` (`spawnSandboxFromConfig`) with a policy derived from these profiles. See [MXC SDK README](https://github.com/microsoft/mxc/tree/main/sdk) and [bubblewrap backend docs](https://github.com/microsoft/mxc/blob/main/docs/bwrap-support/bubblewrap-backend.md).
+OpenClaw runs the gateway on the host; MXC sandboxes **tool/code execution** invoked by the agent. Wire your OpenClaw tool runner to call `@microsoft/mxc-sdk` (`spawnSandboxFromConfig`) with a policy derived from these profiles. See [MXC SDK README](https://github.com/ai-engineering-lab/ms-mxc/tree/main/sdk) and [bubblewrap backend docs](https://github.com/ai-engineering-lab/ms-mxc/blob/main/docs/bwrap-support/bubblewrap-backend.md).
 
 > Alpha preview — do not treat these profiles as production security boundaries.

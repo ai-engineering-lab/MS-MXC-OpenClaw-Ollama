@@ -113,10 +113,16 @@ variable "run_bootstrap_extension" {
   default     = true
 }
 
-variable "mxc_sdk_version" {
-  description = "Pinned npm version for @microsoft/mxc-sdk. See dependencies.lock.json."
+variable "mxc_git_repo" {
+  description = "Git URL for MXC source (ai-engineering-lab/ms-mxc fork). See dependencies.lock.json."
   type        = string
-  default     = "0.6.1"
+  default     = "https://github.com/ai-engineering-lab/ms-mxc.git"
+}
+
+variable "mxc_git_ref" {
+  description = "Git branch, tag, or commit SHA for MXC source. See dependencies.lock.json."
+  type        = string
+  default     = "c1027bc5d750d161e81eb2b6a236d5772af5a3ac"
 }
 
 variable "openclaw_npm_package" {

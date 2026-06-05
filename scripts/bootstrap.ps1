@@ -3,7 +3,10 @@ param(
     [string] $NodeVersion,
 
     [Parameter(Mandatory = $true)]
-    [string] $MxcSdkVersion,
+    [string] $MxcGitRepo,
+
+    [Parameter(Mandatory = $true)]
+    [string] $MxcGitRef,
 
     [Parameter(Mandatory = $true)]
     [string] $OpenClawPackage,
@@ -96,6 +99,69 @@ function Get-PublicIp {
         }
     }
     return "<vm-public-ip>"
+}
+
+function Install-MxcFromGit {
+    param(
+        [string] $Repo,
+        [string] $Ref
+    )
+
+    $buildRoot = Join-Path $BootstrapRoot "ms-mxc-src"
+    if (Test-Path $buildRoot) {
+        Remove-Item -Recurse -Force $buildRoot
+    }
+
+    Write-Log "Cloning MXC from $Repo @ $Ref"
+    git clone --depth 1 --branch $Ref $Repo $buildRoot 2>&1 | ForEach-Object { Write-Log $_ }
+    if ($LASTEXITCODE -ne 0) {
+        git clone $Repo $buildRoot 2>&1 | ForEach-Object { Write-Log $_ }
+        if ($LASTEXITCODE -ne 0) {
+            throw "git clone MXC failed"
+        }
+        git -C $buildRoot checkout $Ref 2>&1 | ForEach-Object { Write-Log $_ }
+        if ($LASTEXITCODE -ne 0) {
+            throw "git checkout MXC ref failed"
+        }
+    }
+
+    if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+        Write-Log "Installing Rust toolchain 1.93 for MXC build"
+        $rustup = Join-Path $BootstrapRoot "rustup-init.exe"
+        Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile $rustup -UseBasicParsing
+        Start-Process -FilePath $rustup -ArgumentList "-y", "--default-toolchain", "1.93", "--profile", "minimal" -Wait
+        Refresh-Path
+    }
+
+    if (Get-Command rustup -ErrorAction SilentlyContinue) {
+        rustup target add x86_64-pc-windows-msvc 2>&1 | ForEach-Object { Write-Log $_ }
+        rustup target add aarch64-pc-windows-msvc 2>&1 | ForEach-Object { Write-Log $_ }
+    }
+
+    $target = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "aarch64-pc-windows-msvc" } else { "x86_64-pc-windows-msvc" }
+    $sdkArch = if ($target -like "aarch64*") { "arm64" } else { "x64" }
+    $srcDir = Join-Path $buildRoot "src"
+    Write-Log "Building MXC Rust binaries (release) for $target"
+    Push-Location $srcDir
+    cargo build --release --target $target 2>&1 | ForEach-Object { Write-Log $_ }
+    if ($LASTEXITCODE -ne 0) {
+        Pop-Location
+        throw "MXC cargo build failed"
+    }
+    Pop-Location
+
+    $binSrc = Join-Path $srcDir "target\$target\release"
+    $binDst = Join-Path $buildRoot "sdk\bin\$sdkArch"
+    New-Item -ItemType Directory -Force -Path $binDst | Out-Null
+    Copy-Item (Join-Path $binSrc "wxc-exec.exe") (Join-Path $binDst "wxc-exec.exe") -Force
+
+    Push-Location (Join-Path $buildRoot "sdk")
+    npm install 2>&1 | ForEach-Object { Write-Log $_ }
+    npm run build 2>&1 | ForEach-Object { Write-Log $_ }
+    npm install -g . 2>&1 | ForEach-Object { Write-Log $_ }
+    Pop-Location
+    Refresh-Path
+    Write-Log "MXC SDK installed from ${Repo}#${Ref}"
 }
 
 function Invoke-NpmGlobal {
@@ -281,7 +347,7 @@ New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
 New-Item -ItemType Directory -Force -Path $WorkspaceDir | Out-Null
 
 Write-Log "Starting MXC + OpenClaw + Ollama bootstrap (gateway on lan)"
-Write-Log "Pinned versions: Node v$NodeVersion, MXC SDK $MxcSdkVersion, OpenClaw $OpenClawPackage, Ollama v$OllamaVersion, Git $GitForWindowsVersion"
+Write-Log "Pinned versions: Node v$NodeVersion, MXC ${MxcGitRepo}#$MxcGitRef, OpenClaw $OpenClawPackage, Ollama v$OllamaVersion, Git $GitForWindowsVersion"
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Write-Log "Installing Git for Windows $GitForWindowsVersion"
@@ -314,7 +380,12 @@ else {
 Write-Log "Node version: $(node --version)"
 Write-Log "npm version: $(npm --version)"
 
-Invoke-NpmGlobal -PackageSpec "@microsoft/mxc-sdk@$MxcSdkVersion" -AllowFailure
+try {
+    Install-MxcFromGit -Repo $MxcGitRepo -Ref $MxcGitRef
+}
+catch {
+    Write-Log "WARNING: MXC install from git failed: $($_.Exception.Message)"
+}
 
 Write-Log "Installing OpenClaw package: $OpenClawPackage"
 Invoke-NpmGlobal -PackageSpec $OpenClawPackage

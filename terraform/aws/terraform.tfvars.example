@@ -23,7 +23,8 @@ ollama_version       = "0.30.5"
 install_ollama = true
 ollama_model   = "llama3.2:1b"
 
-# MXC on Linux (bubblewrap backend; requires bubblewrap + @microsoft/mxc-sdk)
+# MXC from ai-engineering-lab/ms-mxc (clone + build; npm package @microsoft/mxc-sdk)
 install_mxc     = true
-mxc_sdk_version = "0.6.1"
+mxc_git_repo    = "https://github.com/ai-engineering-lab/ms-mxc.git"
+mxc_git_ref     = "c1027bc5d750d161e81eb2b6a236d5772af5a3ac"
 mxc_backend     = "bubblewrap"

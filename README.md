@@ -35,9 +35,9 @@ OpenClaw runs the agent and gateway on the host; **MXC sandboxes tool and code e
 
 ## MXC on Windows and Linux
 
-**MXC (Microsoft Execution Containers)** is a cross-platform, policy-driven sandbox for running AI agents and untrusted code. It was announced at **Microsoft Build 2026** (June 2, 2026). This repo pins **`@microsoft/mxc-sdk@0.6.1`** (schema **`0.6.0-alpha`**) on both platforms.
+**MXC (Microsoft Execution Containers)** is a cross-platform, policy-driven sandbox for running AI agents and untrusted code. It was announced at **Microsoft Build 2026** (June 2, 2026). This repo builds MXC from **[ai-engineering-lab/ms-mxc](https://github.com/ai-engineering-lab/ms-mxc)** (fork of [microsoft/mxc](https://github.com/microsoft/mxc)) and installs the **`@microsoft/mxc-sdk`** npm package globally (schema **`0.6.0-alpha`**).
 
-> **Alpha preview** — per [microsoft/mxc](https://github.com/microsoft/mxc), do **not** treat MXC profiles as production security boundaries yet.
+> **Alpha preview** — per [ms-mxc](https://github.com/ai-engineering-lab/ms-mxc), do **not** treat MXC profiles as production security boundaries yet.
 
 ### Platform comparison
 
@@ -75,7 +75,7 @@ Ollama listens on **127.0.0.1:11434 only** — not exposed in cloud security gro
 ### Windows MXC details
 
 - **Backend:** `processcontainer` — stable, no nested virtualization, no experimental flag
-- **Install:** `npm install -g @microsoft/mxc-sdk@0.6.1` (via `bootstrap.ps1`)
+- **Install:** clone [ai-engineering-lab/ms-mxc](https://github.com/ai-engineering-lab/ms-mxc), build Rust + SDK, `npm install -g` (via `bootstrap.ps1`)
 - **Requirements:** Windows 11 Enterprise 24H2+; Windows Server not supported for this backend
 - **Verify:** RDP to VM, review `C:\bootstrap\bootstrap.log`, confirm global npm package:
   ```powershell
@@ -87,7 +87,7 @@ Ollama listens on **127.0.0.1:11434 only** — not exposed in cloud security gro
 
 - **Backend:** `bubblewrap` (default) — unprivileged sandbox via user namespaces + `bwrap`
 - **Alternative:** `lxc` — separate rootfs, requires LXC toolset (set `mxc_backend = "lxc"` in `terraform/aws/`)
-- **Install:** `apt install bubblewrap uidmap` + `npm install -g @microsoft/mxc-sdk@0.6.1` (via `bootstrap-linux.sh`)
+- **Install:** `apt install bubblewrap uidmap` + build MXC from [ai-engineering-lab/ms-mxc](https://github.com/ai-engineering-lab/ms-mxc) (via `bootstrap-linux.sh`)
 - **Requirements:**
   - `bwrap` on PATH (for bubblewrap)
   - User namespaces enabled: `/proc/sys/kernel/unprivileged_userns_clone` should be `1`
@@ -112,10 +112,11 @@ Both platforms use the same npm package and JSON policy schema:
 
 | Item | Value |
 | ---- | ----- |
-| npm package | [`@microsoft/mxc-sdk@0.6.1`](https://www.npmjs.com/package/@microsoft/mxc-sdk/v/0.6.1) |
+| npm package | [`@microsoft/mxc-sdk`](https://github.com/ai-engineering-lab/ms-mxc/tree/main/sdk) (built from git at bootstrap) |
 | Schema version | `0.6.0-alpha` |
 | TypeScript API | `spawnSandboxFromConfig`, `createConfigFromPolicy`, `getPlatformSupport`, … |
-| Upstream repo | [microsoft/mxc](https://github.com/microsoft/mxc) |
+| Source repo | [ai-engineering-lab/ms-mxc](https://github.com/ai-engineering-lab/ms-mxc) |
+| Upstream | [microsoft/mxc](https://github.com/microsoft/mxc) |
 
 Use `getPlatformSupport()` from the SDK to confirm the host OS and available backends before spawning sandboxes.
 
@@ -123,7 +124,7 @@ Use `getPlatformSupport()` from the SDK to confirm the host OS and available bac
 
 ## What is Microsoft MXC? (summary)
 
-- **SDK:** [`@microsoft/mxc-sdk`](https://www.npmjs.com/package/@microsoft/mxc-sdk) (TypeScript); native binaries in [microsoft/mxc](https://github.com/microsoft/mxc)
+- **SDK:** [`@microsoft/mxc-sdk`](https://github.com/ai-engineering-lab/ms-mxc/tree/main/sdk) (built from [ai-engineering-lab/ms-mxc](https://github.com/ai-engineering-lab/ms-mxc)); native binaries compiled at bootstrap
 - **Status:** Early preview — pin versions and follow upstream release notes
 - **Platform matrix:** [github.com/microsoft/mxc#platforms](https://github.com/microsoft/mxc#platforms)
 
@@ -138,7 +139,7 @@ Use `getPlatformSupport()` from the SDK to confirm the host OS and available bac
 | Region | `canadacentral` |
 | OS | Windows 11 Enterprise 24H2 |
 | VM size | `Standard_D4s_v3` |
-| Runtime | Node 24.10.0, `@microsoft/mxc-sdk@0.6.1`, OpenClaw 2026.6.1, Ollama 0.30.5 |
+| Runtime | Node 24.10.0, MXC from [ms-mxc](https://github.com/ai-engineering-lab/ms-mxc), OpenClaw 2026.6.1, Ollama 0.30.5 |
 | MXC backend | `processcontainer` |
 | LLM | `llama3.2:3b` via Ollama |
 | Network | Public IP; RDP (3389) + OpenClaw gateway (18789) |
@@ -151,7 +152,7 @@ Use `getPlatformSupport()` from the SDK to confirm the host OS and available bac
 | Region | `ca-central-1` |
 | OS | Ubuntu 24.04 LTS |
 | Instance | `c6i.2xlarge` (8 vCPU, 16 GB) |
-| Runtime | Node 24.10.0, `@microsoft/mxc-sdk@0.6.1`, OpenClaw 2026.6.1, Ollama 0.30.5 |
+| Runtime | Node 24.10.0, MXC from [ms-mxc](https://github.com/ai-engineering-lab/ms-mxc), OpenClaw 2026.6.1, Ollama 0.30.5 |
 | MXC backend | `bubblewrap` (or `lxc`) |
 | LLM | `llama3.2:1b` via Ollama (tool-capable) |
 | Network | Elastic IP; SSH (22) + OpenClaw gateway (18789) |
@@ -338,7 +339,8 @@ Runtime versions are pinned for reproducible bootstrap. The canonical list is [`
 
 | Component | Pinned version | Terraform variable |
 | --------- | -------------- | ------------------ |
-| **@microsoft/mxc-sdk** | `0.6.1` | `mxc_sdk_version` (both platforms) |
+| **MXC source** | [ai-engineering-lab/ms-mxc](https://github.com/ai-engineering-lab/ms-mxc) | `mxc_git_repo` / `mxc_git_ref` (both platforms) |
+| **MXC npm package** | `@microsoft/mxc-sdk` (built from git) | installed globally at bootstrap |
 | **MXC backend (Windows)** | `processcontainer` | implicit via OS / bootstrap |
 | **MXC backend (Linux)** | `bubblewrap` | `mxc_backend` in `terraform/aws/` |
 | **OpenClaw** | `2026.6.1` | `openclaw_npm_package` / `openclaw_version` |
@@ -373,11 +375,12 @@ This is a **lab / sandbox** template, not production-hardened:
 - [OpenClaw Gateway docs](https://docs.openclaw.ai/gateway)
 - [OpenClaw Ollama provider](https://docs.openclaw.ai/providers/ollama)
 - [Ollama on Windows](https://docs.ollama.com/windows)
-- [Microsoft MXC](https://github.com/microsoft/mxc)
+- [Microsoft MXC (ai-engineering-lab fork)](https://github.com/ai-engineering-lab/ms-mxc)
+- [Microsoft MXC upstream](https://github.com/microsoft/mxc)
 - [MXC platform matrix (Windows vs Linux backends)](https://github.com/microsoft/mxc#platforms)
 - [MXC bubblewrap backend (Linux)](https://github.com/microsoft/mxc/blob/main/docs/bwrap-support/bubblewrap-backend.md)
 - [MXC processcontainer guide (Windows)](https://github.com/microsoft/mxc/blob/main/docs/base-process-container/guide.md)
-- [@microsoft/mxc-sdk on npm](https://www.npmjs.com/package/@microsoft/mxc-sdk)
+- [@microsoft/mxc-sdk (built from ms-mxc)](https://github.com/ai-engineering-lab/ms-mxc/tree/main/sdk)
 - [MXC sandbox profiles in this repo](config/mxc/)
 
 ---
