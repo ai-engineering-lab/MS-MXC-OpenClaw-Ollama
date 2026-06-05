@@ -10,12 +10,27 @@
   },
   "terraform_providers": {
     "azurerm": "4.76.0",
-    "random": "3.9.0"
+    "random": "3.9.0",
+    "aws": "5.x"
+  },
+  "platforms": {
+    "azure": {
+      "os": "Windows 11 Enterprise 24H2",
+      "mxc": true,
+      "terraform_path": "terraform/"
+    },
+    "aws-linux": {
+      "os": "Ubuntu 24.04 LTS",
+      "mxc": true,
+      "mxc_backend": "bubblewrap",
+      "terraform_path": "terraform/aws/",
+      "ollama_model": "llama3.2:1b"
+    }
   },
   "notes": {
     "mxc_sdk": "Alpha preview; bump only after testing against microsoft/mxc release notes.",
     "openclaw": "CalVer npm package; set openclaw_npm_package in terraform.tfvars.",
-    "ollama": "GitHub release tag without leading v in terraform variable (e.g. 0.30.5).",
+    "ollama": "GitHub release tag without leading v in terraform variable (e.g. 0.30.5). Linux uses ollama-linux-amd64.tar.zst; Windows uses ollama-windows-amd64.zip.",
     "node": "Full semver passed to bootstrap (e.g. 24.10.0).",
     "windows_image": "Azure marketplace version remains 'latest' unless overridden in terraform.tfvars."
   }
