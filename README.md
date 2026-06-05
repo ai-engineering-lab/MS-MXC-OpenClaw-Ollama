@@ -4,10 +4,10 @@ Deploy **OpenClaw** with **Ollama** on cloud VMs via Terraform. Two platform pat
 
 | Platform | Path | OS | MXC sandbox |
 | -------- | ---- | -- | ----------- |
-| **Azure (default)** | [`terraform/`](terraform/) | Windows 11 24H2 | Yes |
-| **AWS Linux** | [`terraform/aws/`](terraform/aws/) | Ubuntu 24.04 | No |
+| **Azure (default)** | [`terraform/`](terraform/) | Windows 11 24H2 | Yes (`processcontainer`) |
+| **AWS Linux** | [`terraform/aws/`](terraform/aws/) | Ubuntu 24.04 | Yes (`bubblewrap` / `lxc`) |
 
-The Azure stack runs **Microsoft Execution Containers (MXC)** for safer AI agent tool execution. The AWS Linux stack runs **OpenClaw + Ollama only** (MXC requires Windows 11).
+Both stacks run **OpenClaw + Ollama** with **MXC** sandboxing for agent tool execution. Backend differs by OS: Windows uses `processcontainer`; Linux uses [bubblewrap](https://github.com/microsoft/mxc/blob/main/docs/bwrap-support/bubblewrap-backend.md) (default) or `lxc`.
 
 **[ai-engineering-lab](https://github.com/ai-engineering-lab)**
 
@@ -27,7 +27,8 @@ OpenClaw runs inside MXC containers on Windows. Multi-step agent actions are con
 | **OpenClaw**         | Open-source AI agent runtime (gateway, tools, channels)             |
 | **Ollama + llama3.2:3b** | Local LLM inference (no cloud API key required)                 |
 | **MXC**              | Policy-driven, OS-level sandbox for untrusted code / tool execution |
-| **Windows 11 24H2+** | Required host OS for MXC client backends                            |
+| **Windows 11 24H2+** | Required host OS for MXC `processcontainer` backend (Azure)       |
+| **Ubuntu 24.04+**    | Supported host OS for MXC `bubblewrap` / `lxc` backends (Linux)   |
 | **Azure VM**         | Terraform-provisioned compute in `canadacentral` (configurable)     |
 
 
@@ -39,7 +40,7 @@ OpenClaw runs inside MXC containers on Windows. Multi-step agent actions are con
 
 - **SDK:** `[@microsoft/mxc-sdk](https://www.npmjs.com/package/@microsoft/mxc-sdk)` (TypeScript); native runtime in [microsoft/mxc](https://github.com/microsoft/mxc)
 - **Status:** Early preview (schema ~`0.6.0-alpha`) — **do not treat MXC profiles as production security boundaries yet**
-- **Requirements:** Windows 11 Enterprise 24H2+ (build 26100+); Windows Server is **not** supported for client-only MXC backends
+- **Requirements:** Windows 11 Enterprise 24H2+ for `processcontainer`; Linux x64/ARM64 for `bubblewrap` or `lxc` ([platform matrix](https://github.com/microsoft/mxc#platforms))
 
 ### Integration with OpenClaw
 
@@ -47,11 +48,12 @@ OpenClaw runs inside MXC containers on Windows. Multi-step agent actions are con
 
 - **OpenClaw** runs the agent and gateway
 - **Ollama** provides local inference with **llama3.2:3b** by default (configurable via `ollama_model`)
-- **MXC** sandboxes the agent’s tool and code execution via the `processcontainer` backend (stable, no nested virtualization required)
+- **MXC** sandboxes the agent’s tool and code execution (`processcontainer` on Windows, `bubblewrap` on Linux)
 
 ```
 Browser → OpenClaw Gateway → Agent → Ollama (llama3.2:3b)  ← local inference
-                               └→ MXC processcontainer    ← tool/code sandbox
+                               └→ MXC sandbox backend      ← tool/code sandbox
+                                 (processcontainer | bubblewrap)
 ```
 
 Ollama listens on **localhost:11434 only** — it is not exposed in the Azure NSG.
@@ -108,9 +110,9 @@ terraform output
 
 ---
 
-## Quick start (AWS Linux — OpenClaw + Ollama)
+## Quick start (AWS Linux — OpenClaw + Ollama + MXC)
 
-> **Feature branch:** `feature/linux-platform`. MXC is **not** available on Linux.
+> Terraform module is in-repo; **do not apply until ready**. Bootstrap and MXC profiles can be tested locally on Ubuntu via `scripts/bootstrap-linux.sh`.
 
 ```bash
 git clone https://github.com/ai-engineering-lab/MS-MXC-OpenClaw-Ollama.git
@@ -121,14 +123,13 @@ cp terraform.tfvars.example terraform.tfvars
 
 terraform init
 terraform plan
-terraform apply
+# terraform apply   # when ready to deploy
 ```
 
-After apply:
+Verify MXC on an Ubuntu host (local VM or after future deploy):
 
 ```bash
-terraform output openclaw_gateway_url
-ssh ubuntu@$(terraform output -raw public_ip) 'cat /opt/openclaw/gateway-access.txt'
+./scripts/verify-mxc-linux.sh
 ```
 
 See [`terraform/aws/README.md`](terraform/aws/README.md) for full AWS Linux docs.
@@ -176,11 +177,13 @@ After `terraform apply`, open the gateway URL from `terraform output` (port **18
 ├── image.png                 # Architecture diagram (MXC + OpenClaw on Windows)
 ├── image5.png                # OpenClaw Control UI — Chat + Ollama
 ├── image6.png                # OpenClaw Control UI — Overview / gateway access
+├── config/mxc/               # MXC sandbox JSON profiles (Linux bubblewrap)
 ├── dependencies.lock.json    # Pinned runtime + provider versions
 ├── instructions.txt          # Original design brief
 ├── scripts/
 │   ├── bootstrap.ps1         # Azure Windows bootstrap (Node, MXC SDK, Ollama, OpenClaw)
-│   └── bootstrap-linux.sh    # AWS/Linux bootstrap (Node, Ollama, OpenClaw; no MXC)
+│   ├── bootstrap-linux.sh    # Linux bootstrap (Node, MXC SDK, bubblewrap, Ollama, OpenClaw)
+│   └── verify-mxc-linux.sh   # MXC bubblewrap smoke test on Ubuntu
 └── terraform/
     ├── main.tf               # Azure Windows 11 + MXC
     ├── ...
@@ -203,7 +206,8 @@ Runtime versions are pinned for reproducible bootstrap. The canonical list is [`
 | **OpenClaw** | `2026.6.1` | `openclaw_npm_package` / `openclaw_version` |
 | **Node.js** | `24.10.0` | `node_version` |
 | **Ollama** | `0.30.5` | `ollama_version` |
-| **Git for Windows** | `2.49.0.windows.1` | `git_for_windows_version` |
+| **Git for Windows** | `2.49.0.windows.1` | `git_for_windows_version` (Azure only) |
+| **MXC backend (Linux)** | `bubblewrap` | `mxc_backend` in `terraform/aws/` |
 | **Ollama model** | `llama3.2:3b` | `ollama_model` |
 
 After apply, run `terraform output pinned_dependencies` to confirm what was passed to bootstrap.

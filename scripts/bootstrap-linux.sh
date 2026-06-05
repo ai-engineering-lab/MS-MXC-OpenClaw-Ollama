@@ -1,6 +1,6 @@
 #!/bin/bash
-# OpenClaw + Ollama bootstrap for Ubuntu Linux (AWS EC2 user_data or manual run).
-# MXC is Windows-only; this path deploys OpenClaw + Ollama without MXC sandboxing.
+# OpenClaw + Ollama + MXC bootstrap for Ubuntu Linux (EC2 user_data or manual run).
+# Linux MXC uses the bubblewrap backend by default (see microsoft/mxc).
 set -euo pipefail
 
 NODE_VERSION="${NODE_VERSION:?NODE_VERSION required}"
@@ -10,16 +10,22 @@ OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2:3b}"
 OLLAMA_VERSION="${OLLAMA_VERSION:?OLLAMA_VERSION required}"
 INSTALL_OLLAMA="${INSTALL_OLLAMA:-true}"
 DISABLE_CONTROL_UI_DEVICE_AUTH="${DISABLE_CONTROL_UI_DEVICE_AUTH:-true}"
+MXC_SDK_VERSION="${MXC_SDK_VERSION:-0.6.1}"
+MXC_BACKEND="${MXC_BACKEND:-bubblewrap}"
+INSTALL_MXC="${INSTALL_MXC:-true}"
 
 BOOTSTRAP_ROOT="/var/log/openclaw-bootstrap"
 OPENCLAW_ROOT="/opt/openclaw"
 CONFIG_DIR="${OPENCLAW_ROOT}/config"
 STATE_DIR="${CONFIG_DIR}/state"
 WORKSPACE_DIR="${CONFIG_DIR}/workspace"
+MXC_CONFIG_DIR="${CONFIG_DIR}/mxc"
 LOG_FILE="${BOOTSTRAP_ROOT}/bootstrap.log"
 CONFIG_FILE="${CONFIG_DIR}/openclaw.json"
 ENV_FILE="${CONFIG_DIR}/.env"
 ACCESS_FILE="${OPENCLAW_ROOT}/gateway-access.txt"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" 2>/dev/null && pwd || echo "")"
+REPO_CONFIG_MXC="${SCRIPT_DIR}/../config/mxc"
 
 log() {
   local line="[$(date -Is)] $*"
@@ -88,6 +94,137 @@ install_openclaw() {
   npm install -g "${OPENCLAW_PACKAGE}"
   refresh_path
   log "OpenClaw CLI: $(command -v openclaw)"
+}
+
+install_mxc_runtime() {
+  log "Installing MXC Linux runtime for backend: ${MXC_BACKEND}"
+  if [[ "${MXC_BACKEND}" == "lxc" ]]; then
+    apt-get install -y lxc lxc-templates uidmap
+  else
+    apt-get install -y bubblewrap uidmap
+  fi
+
+  local userns
+  userns="$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo unknown)"
+  log "kernel.unprivileged_userns_clone=${userns}"
+  if [[ "$userns" != "1" ]]; then
+    log "WARNING: unprivileged user namespaces may be disabled; bubblewrap may fail"
+  fi
+
+  if [[ "${MXC_BACKEND}" == "bubblewrap" ]] && command -v bwrap >/dev/null 2>&1; then
+    log "bubblewrap ready: $(command -v bwrap)"
+  elif [[ "${MXC_BACKEND}" == "lxc" ]] && command -v lxc-create >/dev/null 2>&1; then
+    log "lxc ready: $(command -v lxc-create)"
+  else
+    log "WARNING: MXC runtime binary not found on PATH after install"
+  fi
+}
+
+install_mxc_sdk() {
+  log "Installing @microsoft/mxc-sdk@${MXC_SDK_VERSION}"
+  if npm install -g "@microsoft/mxc-sdk@${MXC_SDK_VERSION}"; then
+    refresh_path
+    log "MXC SDK installed at $(npm root -g)/@microsoft/mxc-sdk"
+  else
+    log "WARNING: npm install -g @microsoft/mxc-sdk@${MXC_SDK_VERSION} failed"
+    return 1
+  fi
+}
+
+resolve_lxc_exec() {
+  local sdk_root
+  sdk_root="$(npm root -g)/@microsoft/mxc-sdk"
+  find "$sdk_root" -name lxc-exec -type f 2>/dev/null | head -1
+}
+
+install_mxc_configs() {
+  log "Installing MXC sandbox profiles to ${MXC_CONFIG_DIR}"
+  install -d -m 0750 -o ubuntu -g ubuntu "$MXC_CONFIG_DIR"
+
+  if [[ -d "$REPO_CONFIG_MXC" ]]; then
+    cp -a "$REPO_CONFIG_MXC/." "$MXC_CONFIG_DIR/"
+    log "Copied MXC profiles from repository: $REPO_CONFIG_MXC"
+    return
+  fi
+
+  cat >"${MXC_CONFIG_DIR}/linux-bubblewrap-lab.json" <<'EOF'
+{
+  "version": "0.6.0-alpha",
+  "platform": "linux",
+  "containment": "bubblewrap",
+  "process": {
+    "commandLine": "echo 'OpenClaw tool sandbox smoke test'",
+    "cwd": "/tmp",
+    "timeout": 30000
+  },
+  "filesystem": {
+    "readwritePaths": ["/tmp/openclaw-sandbox"],
+    "readonlyPaths": ["/usr", "/bin", "/lib", "/lib64"],
+    "deniedPaths": ["/etc/shadow", "/root"]
+  },
+  "network": {
+    "defaultPolicy": "block"
+  }
+}
+EOF
+
+  cat >"${MXC_CONFIG_DIR}/linux-openclaw-tools.json" <<'EOF'
+{
+  "version": "0.6.0-alpha",
+  "platform": "linux",
+  "containment": "bubblewrap",
+  "process": {
+    "commandLine": "PLACEHOLDER_COMMAND",
+    "cwd": "/tmp/openclaw-sandbox",
+    "timeout": 120000
+  },
+  "filesystem": {
+    "readwritePaths": ["/tmp/openclaw-sandbox", "/opt/openclaw/config/workspace"],
+    "readonlyPaths": ["/usr", "/bin", "/lib", "/lib64", "/opt/openclaw/config/mxc"],
+    "deniedPaths": ["/etc/shadow", "/root", "/home/ubuntu/.ssh"]
+  },
+  "network": {
+    "defaultPolicy": "block"
+  }
+}
+EOF
+  log "Wrote embedded MXC profiles (repo config/mxc not available on host)"
+}
+
+verify_mxc() {
+  local lxc_exec smoke_config
+  lxc_exec="$(resolve_lxc_exec || true)"
+  if [[ -z "$lxc_exec" ]]; then
+    log "WARNING: MXC verify skipped — lxc-exec not found"
+    return 1
+  fi
+
+  smoke_config="${MXC_CONFIG_DIR}/linux-bubblewrap-lab.json"
+  if [[ ! -f "$smoke_config" ]]; then
+    log "WARNING: MXC verify skipped — missing $smoke_config"
+    return 1
+  fi
+
+  install -d -m 1777 /tmp/openclaw-sandbox
+  log "Running MXC bubblewrap smoke test via $lxc_exec"
+  if "$lxc_exec" "$smoke_config" >>"$LOG_FILE" 2>&1; then
+    log "MXC smoke test passed"
+    return 0
+  fi
+  log "WARNING: MXC smoke test failed — see bootstrap log"
+  return 1
+}
+
+install_mxc() {
+  if [[ "${INSTALL_MXC}" != "true" ]]; then
+    log "Skipping MXC install (INSTALL_MXC=${INSTALL_MXC})"
+    return
+  fi
+
+  install_mxc_runtime
+  install_mxc_sdk || true
+  install_mxc_configs
+  verify_mxc || true
 }
 
 install_ollama() {
@@ -297,9 +434,12 @@ Env file:    ${ENV_FILE}
 1. Open the Control UI URL above from your browser and paste the token
 2. If using Ollama, wait for model pull: tail -f ${BOOTSTRAP_ROOT}/ollama-pull.log
 3. Restart gateway: sudo systemctl restart openclaw-gateway
-4. MXC is not available on Linux; tool execution is not MXC-sandboxed
+4. Verify MXC: sudo bash /opt/openclaw/scripts/verify-mxc-linux.sh (if installed)
+5. MXC profiles: ${MXC_CONFIG_DIR} (bubblewrap backend on Linux)
+6. Wire OpenClaw tool execution to @microsoft/mxc-sdk per config/mxc README
 
-Note: Ollama listens on localhost only (port 11434 is not exposed in the security group).
+Note: Ollama listens on localhost only (port 11434 is not exposed publicly).
+MXC is alpha preview; do not treat profiles as production security boundaries.
 EOF
   chmod 600 "$ACCESS_FILE"
   chown ubuntu:ubuntu "$ACCESS_FILE"
@@ -339,16 +479,23 @@ main() {
   install -d -m 0755 "$BOOTSTRAP_ROOT" "$OPENCLAW_ROOT"
   touch "$LOG_FILE"
 
-  log "Starting OpenClaw + Ollama Linux bootstrap (no MXC)"
-  log "Pinned versions: Node v${NODE_VERSION}, OpenClaw ${OPENCLAW_PACKAGE}, Ollama v${OLLAMA_VERSION}"
+  log "Starting OpenClaw + Ollama + MXC Linux bootstrap"
+  log "Pinned versions: Node v${NODE_VERSION}, MXC SDK ${MXC_SDK_VERSION}, OpenClaw ${OPENCLAW_PACKAGE}, Ollama v${OLLAMA_VERSION}, backend ${MXC_BACKEND}"
 
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -y
   apt-get install -y ca-certificates curl jq openssl
 
   install_node
+  install_mxc
   install_openclaw
   write_openclaw_env
+
+  install -d -m 0755 "${OPENCLAW_ROOT}/scripts"
+  if [[ -f "${SCRIPT_DIR}/verify-mxc-linux.sh" ]]; then
+    install -m 0755 "${SCRIPT_DIR}/verify-mxc-linux.sh" "${OPENCLAW_ROOT}/scripts/verify-mxc-linux.sh"
+    log "Installed verify-mxc-linux.sh to ${OPENCLAW_ROOT}/scripts/"
+  fi
 
   if [[ "${INSTALL_OLLAMA}" == "true" ]]; then
     install_ollama

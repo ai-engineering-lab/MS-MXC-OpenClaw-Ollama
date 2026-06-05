@@ -1,0 +1,18 @@
+{
+  "version": "0.6.0-alpha",
+  "platform": "linux",
+  "containment": "bubblewrap",
+  "process": {
+    "commandLine": "echo 'OpenClaw tool sandbox smoke test'",
+    "cwd": "/tmp",
+    "timeout": 30000
+  },
+  "filesystem": {
+    "readwritePaths": ["/tmp/openclaw-sandbox"],
+    "readonlyPaths": ["/usr", "/bin", "/lib", "/lib64"],
+    "deniedPaths": ["/etc/shadow", "/root"]
+  },
+  "network": {
+    "defaultPolicy": "block"
+  }
+}

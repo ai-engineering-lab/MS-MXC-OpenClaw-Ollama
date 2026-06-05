@@ -21,6 +21,9 @@ export OLLAMA_MODEL="${var.ollama_model}"
 export OLLAMA_VERSION="${var.ollama_version}"
 export INSTALL_OLLAMA="${lower(tostring(var.install_ollama))}"
 export DISABLE_CONTROL_UI_DEVICE_AUTH="${lower(tostring(var.openclaw_control_ui_disable_device_auth))}"
+export MXC_SDK_VERSION="${var.mxc_sdk_version}"
+export MXC_BACKEND="${var.mxc_backend}"
+export INSTALL_MXC="${lower(tostring(var.install_mxc))}"
 ENV
 
   user_data = join("\n", [

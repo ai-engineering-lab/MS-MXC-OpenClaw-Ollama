@@ -21,7 +21,8 @@
     },
     "aws-linux": {
       "os": "Ubuntu 24.04 LTS",
-      "mxc": false,
+      "mxc": true,
+      "mxc_backend": "bubblewrap",
       "terraform_path": "terraform/aws/"
     }
   },

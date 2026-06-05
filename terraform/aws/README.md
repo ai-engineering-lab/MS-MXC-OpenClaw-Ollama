@@ -1,24 +1,45 @@
-# AWS Linux (OpenClaw + Ollama)
+# AWS Linux (OpenClaw + Ollama + MXC)
 
-Terraform module that provisions **one Ubuntu 24.04 EC2 instance** with **OpenClaw** and **Ollama**. This is the **Linux platform** path — **MXC is not available** (Windows 11 only).
+Terraform module that provisions **one Ubuntu 24.04 EC2 instance** with **OpenClaw**, **Ollama**, and **Microsoft Execution Containers (MXC)** on Linux.
 
-For the full **MXC + OpenClaw** stack, use [`../`](../) (Azure Windows 11).
+> **Code-only for now** — this module is ready in-repo; run `terraform apply` when you are ready to deploy to AWS.
+
+For the Windows **processcontainer** MXC stack, use [`../`](../) (Azure Windows 11).
 
 ## Architecture
 
 ```
 Browser → OpenClaw Gateway → Agent → Ollama (llama3.2:3b)  ← local inference
-                               └→ (no MXC on Linux)
+                               └→ MXC bubblewrap            ← tool/code sandbox (Linux)
 ```
 
 | Layer | Role |
 | ----- | ---- |
 | **OpenClaw** | Agent runtime and gateway Control UI |
 | **Ollama + llama3.2:3b** | Local LLM inference |
+| **MXC (bubblewrap)** | Policy-driven Linux sandbox via `@microsoft/mxc-sdk` |
 | **Ubuntu 24.04 LTS** | EC2 host OS |
 | **AWS EC2** | Terraform-provisioned compute |
 
 Ollama listens on **127.0.0.1:11434 only** — not exposed in the security group.
+
+## MXC on Linux
+
+[Microsoft MXC](https://github.com/microsoft/mxc) supports Linux with the **bubblewrap** backend (default) or **lxc**. Bootstrap installs:
+
+- `bubblewrap` + `uidmap`
+- `@microsoft/mxc-sdk@0.6.1` (bundles `lxc-exec`)
+- Sample profiles in `/opt/openclaw/config/mxc/` (from [`config/mxc/`](../../config/mxc/))
+
+Verify after bootstrap:
+
+```bash
+./scripts/verify-mxc-linux.sh
+# or on the instance:
+bash /opt/openclaw/scripts/verify-mxc-linux.sh
+```
+
+> Alpha preview — do not treat MXC profiles as production security boundaries.
 
 ## Prerequisites
 
@@ -46,7 +67,7 @@ terraform output openclaw_gateway_url
 terraform output -raw next_steps
 ```
 
-Allow **20–40 minutes** on first boot (Node/npm install, Ollama model pull, gateway start).
+Allow **20–40 minutes** on first boot (Node/npm install, MXC smoke test, Ollama model pull, gateway start).
 
 ## Access
 
@@ -65,6 +86,8 @@ Allow **20–40 minutes** on first boot (Node/npm install, Ollama model pull, ga
 | SSH user | `ubuntu` |
 | Gateway port | `18789` |
 | Ollama model | `llama3.2:3b` |
+| MXC backend | `bubblewrap` |
+| MXC SDK | `@microsoft/mxc-sdk@0.6.1` |
 
 ## Destroy
 
@@ -76,4 +99,4 @@ terraform destroy
 
 - Restrict `allowed_ssh_cidr` and `allowed_gateway_cidr` to your IP
 - Do not commit `terraform.tfvars` or `terraform.tfstate`
-- Linux deployment has **no MXC sandboxing** — lab/sandbox use only
+- MXC is alpha preview; pin SDK versions and follow [microsoft/mxc](https://github.com/microsoft/mxc) guidance

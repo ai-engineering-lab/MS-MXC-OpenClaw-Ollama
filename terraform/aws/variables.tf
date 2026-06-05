@@ -92,6 +92,29 @@ variable "openclaw_control_ui_disable_device_auth" {
   default     = true
 }
 
+variable "mxc_sdk_version" {
+  description = "Pinned npm version for @microsoft/mxc-sdk. See dependencies.lock.json."
+  type        = string
+  default     = "0.6.1"
+}
+
+variable "mxc_backend" {
+  description = "MXC containment backend on Linux: bubblewrap (default) or lxc."
+  type        = string
+  default     = "bubblewrap"
+
+  validation {
+    condition     = contains(["bubblewrap", "lxc"], var.mxc_backend)
+    error_message = "mxc_backend must be bubblewrap or lxc."
+  }
+}
+
+variable "install_mxc" {
+  description = "Install MXC runtime, SDK, and sandbox profiles during bootstrap."
+  type        = bool
+  default     = true
+}
+
 variable "owner_tag" {
   description = "Owner tag applied to AWS resources."
   type        = string
