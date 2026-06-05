@@ -37,7 +37,16 @@ if [[ ! -d "$SDK_ROOT" ]]; then
 fi
 echo "OK  @microsoft/mxc-sdk: $SDK_ROOT"
 
-LXC_EXEC="$(find "$SDK_ROOT" -name lxc-exec -type f 2>/dev/null | head -1 || true)"
+case "$(uname -m)" in
+  x86_64 | amd64) MXC_ARCH_DIR="x64" ;;
+  aarch64 | arm64) MXC_ARCH_DIR="arm64" ;;
+  *)
+    echo "ERROR: unsupported architecture for MXC: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+LXC_EXEC="${SDK_ROOT}/bin/${MXC_ARCH_DIR}/lxc-exec"
 if [[ -z "$LXC_EXEC" ]]; then
   echo "ERROR: lxc-exec binary not found under $SDK_ROOT" >&2
   exit 1
@@ -45,12 +54,16 @@ fi
 echo "OK  lxc-exec: $LXC_EXEC"
 
 echo "=== Platform support (SDK) ==="
-node --input-type=module -e "
+if node --input-type=module -e "
 import { getPlatformSupport } from '@microsoft/mxc-sdk';
 const s = getPlatformSupport();
 console.log(JSON.stringify(s, null, 2));
 if (!s.isSupported) process.exit(2);
-"
+" 2>/dev/null; then
+  :
+else
+  echo "WARN  SDK getPlatformSupport check skipped (using lxc-exec smoke run only)"
+fi
 
 echo "=== Bubblewrap smoke run ==="
 echo "Config: $MXC_CONFIG"

@@ -9,14 +9,14 @@ For the Windows **processcontainer** MXC stack, use [`../`](../) (Azure Windows 
 ## Architecture
 
 ```
-Browser → OpenClaw Gateway → Agent → Ollama (llama3.2:3b)  ← local inference
+Browser → OpenClaw Gateway → Agent → Ollama (llama3.2:1b)  ← local inference
                                └→ MXC bubblewrap            ← tool/code sandbox (Linux)
 ```
 
 | Layer | Role |
 | ----- | ---- |
 | **OpenClaw** | Agent runtime and gateway Control UI |
-| **Ollama + llama3.2:3b** | Local LLM inference |
+| **Ollama + llama3.2:1b** | Local LLM inference (tool-capable) |
 | **MXC (bubblewrap)** | Policy-driven Linux sandbox via `@microsoft/mxc-sdk` |
 | **Ubuntu 24.04 LTS** | EC2 host OS |
 | **AWS EC2** | Terraform-provisioned compute |
@@ -80,12 +80,12 @@ Allow **20–40 minutes** on first boot (Node/npm install, MXC smoke test, Ollam
 | Setting | Default |
 | ------- | ------- |
 | OS | Ubuntu 24.04 LTS (Noble) |
-| Instance | `t3.xlarge` |
+| Instance | `c6i.2xlarge` |
 | Root volume | 100 GB gp3, encrypted |
 | Region | `ca-central-1` |
 | SSH user | `ubuntu` |
 | Gateway port | `18789` |
-| Ollama model | `llama3.2:3b` |
+| Ollama model | `llama3.2:1b` |
 | MXC backend | `bubblewrap` |
 | MXC SDK | `@microsoft/mxc-sdk@0.6.1` |
 

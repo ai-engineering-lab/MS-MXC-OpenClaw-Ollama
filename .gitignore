@@ -5,6 +5,7 @@
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfvars.backup
 crash.log
 crash.*.log
 override.tf
@@ -19,4 +20,15 @@ instruction.txt
 
 # Secrets / local env
 .env
+.env.*
+!.env.example
 *.pem
+*.ppk
+id_rsa
+id_rsa.*
+*.key
+credentials.json
+secrets.json
+gateway-access.txt
+**/gateway-access.txt
+**/openclaw/config/.env

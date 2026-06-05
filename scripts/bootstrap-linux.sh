@@ -6,7 +6,7 @@ set -euo pipefail
 NODE_VERSION="${NODE_VERSION:?NODE_VERSION required}"
 OPENCLAW_PACKAGE="${OPENCLAW_PACKAGE:?OPENCLAW_PACKAGE required}"
 GATEWAY_PORT="${GATEWAY_PORT:-18789}"
-OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2:3b}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2:1b}"
 OLLAMA_VERSION="${OLLAMA_VERSION:?OLLAMA_VERSION required}"
 INSTALL_OLLAMA="${INSTALL_OLLAMA:-true}"
 DISABLE_CONTROL_UI_DEVICE_AUTH="${DISABLE_CONTROL_UI_DEVICE_AUTH:-true}"
@@ -71,6 +71,12 @@ get_public_ip() {
     fi
     sleep 5
   done
+  # Fallback when IMDS public-ipv4 is empty (e.g. before EIP association completes)
+  ip="$(curl -fsS --connect-timeout 5 https://api.ipify.org 2>/dev/null || true)"
+  if [[ -n "$ip" ]]; then
+    echo "$ip"
+    return
+  fi
   echo "<instance-public-ip>"
 }
 
@@ -104,6 +110,17 @@ install_mxc_runtime() {
     apt-get install -y bubblewrap uidmap
   fi
 
+  # Ubuntu 24.04+ blocks unprivileged user namespaces by default; MXC bubblewrap needs this.
+  if [[ -d /proc/sys/kernel ]] && sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+    install -d -m 0755 /etc/sysctl.d
+    cat >/etc/sysctl.d/60-mxc-userns.conf <<'EOF'
+# Allow unprivileged bubblewrap (MXC) on Ubuntu 24.04+
+kernel.apparmor_restrict_unprivileged_userns = 0
+EOF
+    sysctl --system >/dev/null 2>&1 || sysctl -p /etc/sysctl.d/60-mxc-userns.conf >/dev/null 2>&1 || true
+    log "Set kernel.apparmor_restrict_unprivileged_userns=$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo unknown)"
+  fi
+
   local userns
   userns="$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo unknown)"
   log "kernel.unprivileged_userns_clone=${userns}"
@@ -131,10 +148,28 @@ install_mxc_sdk() {
   fi
 }
 
+resolve_mxc_arch_dir() {
+  case "$(uname -m)" in
+    x86_64 | amd64) echo "x64" ;;
+    aarch64 | arm64) echo "arm64" ;;
+    *)
+      log "WARNING: unsupported architecture for MXC: $(uname -m)"
+      return 1
+      ;;
+  esac
+}
+
 resolve_lxc_exec() {
-  local sdk_root
+  local sdk_root arch_dir candidate
   sdk_root="$(npm root -g)/@microsoft/mxc-sdk"
-  find "$sdk_root" -name lxc-exec -type f 2>/dev/null | head -1
+  arch_dir="$(resolve_mxc_arch_dir)" || return 1
+  candidate="${sdk_root}/bin/${arch_dir}/lxc-exec"
+  if [[ -x "$candidate" ]]; then
+    echo "$candidate"
+    return 0
+  fi
+  log "WARNING: lxc-exec not found at $candidate"
+  return 1
 }
 
 install_mxc_configs() {
@@ -159,8 +194,7 @@ install_mxc_configs() {
   },
   "filesystem": {
     "readwritePaths": ["/tmp/openclaw-sandbox"],
-    "readonlyPaths": ["/usr", "/bin", "/lib", "/lib64"],
-    "deniedPaths": ["/etc/shadow", "/root"]
+    "readonlyPaths": ["/usr", "/bin", "/lib", "/lib64"]
   },
   "network": {
     "defaultPolicy": "block"
@@ -180,8 +214,7 @@ EOF
   },
   "filesystem": {
     "readwritePaths": ["/tmp/openclaw-sandbox", "/opt/openclaw/config/workspace"],
-    "readonlyPaths": ["/usr", "/bin", "/lib", "/lib64", "/opt/openclaw/config/mxc"],
-    "deniedPaths": ["/etc/shadow", "/root", "/home/ubuntu/.ssh"]
+    "readonlyPaths": ["/usr", "/bin", "/lib", "/lib64", "/opt/openclaw/config/mxc"]
   },
   "network": {
     "defaultPolicy": "block"
@@ -238,7 +271,9 @@ install_ollama() {
   chmod +x /usr/local/bin/ollama
 
   install -d -m 0755 /etc/systemd/system
-  cat >/etc/systemd/system/ollama.service <<'EOF'
+  local ollama_models_dir="/usr/local/share/ollama/models"
+  install -d -m 0755 "$ollama_models_dir"
+  cat >/etc/systemd/system/ollama.service <<EOF
 [Unit]
 Description=Ollama local LLM server
 After=network-online.target
@@ -249,7 +284,9 @@ Type=simple
 ExecStart=/usr/local/bin/ollama serve
 Restart=always
 RestartSec=5
+Environment=HOME=/root
 Environment=OLLAMA_HOST=127.0.0.1:11434
+Environment=OLLAMA_MODELS=${ollama_models_dir}
 
 [Install]
 WantedBy=multi-user.target
@@ -273,6 +310,8 @@ EOF
   cat >/usr/local/bin/openclaw-pull-ollama-model.sh <<PULL
 #!/bin/bash
 set -euo pipefail
+export HOME=/root
+export OLLAMA_MODELS=/usr/local/share/ollama/models
 LOG="${BOOTSTRAP_ROOT}/ollama-pull.log"
 echo "\$(date -Is) Starting Ollama pull for ${OLLAMA_MODEL}" >> "\$LOG"
 /usr/local/bin/ollama pull "${OLLAMA_MODEL}" >> "\$LOG" 2>&1
@@ -400,6 +439,17 @@ write_openclaw_config() {
   fi
 
   chown -R ubuntu:ubuntu "$OPENCLAW_ROOT"
+
+  # Bootstrap runs as root; gateway runs as ubuntu. Ensure home dirs are usable.
+  if id ubuntu &>/dev/null; then
+    install -d -m 0700 -o ubuntu -g ubuntu /home/ubuntu/.openclaw
+    touch /home/ubuntu/.openclaw/exec-approvals.json
+    chown ubuntu:ubuntu /home/ubuntu/.openclaw/exec-approvals.json
+    chmod 600 /home/ubuntu/.openclaw/exec-approvals.json
+    if [[ -d /home/ubuntu/.npm ]]; then
+      chown -R ubuntu:ubuntu /home/ubuntu/.npm
+    fi
+  fi
 
   cat >"$ENV_FILE" <<EOF
 OPENCLAW_GATEWAY_TOKEN=${gateway_token}

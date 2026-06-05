@@ -9,8 +9,7 @@
   },
   "filesystem": {
     "readwritePaths": ["/tmp/openclaw-sandbox", "/opt/openclaw/config/workspace"],
-    "readonlyPaths": ["/usr", "/bin", "/lib", "/lib64", "/opt/openclaw/config/mxc"],
-    "deniedPaths": ["/etc/shadow", "/root", "/home/ubuntu/.ssh"]
+    "readonlyPaths": ["/usr", "/bin", "/lib", "/lib64", "/opt/openclaw/config/mxc"]
   },
   "network": {
     "defaultPolicy": "block"

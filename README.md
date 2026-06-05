@@ -1,6 +1,6 @@
-# MXC OpenClaw Azure Sandbox
+# MS-MXC-OpenClaw-Ollama
 
-Deploy **OpenClaw** with **Ollama** on cloud VMs via Terraform. Two platform paths:
+Deploy **OpenClaw** with **Ollama** and **Microsoft Execution Containers (MXC)** on cloud VMs via Terraform. Two platform paths:
 
 | Platform | Path | OS | MXC sandbox |
 | -------- | ---- | -- | ----------- |
@@ -17,73 +17,169 @@ Both stacks run **OpenClaw + Ollama** with **MXC** sandboxing for agent tool exe
 
 Enforcing physical boundaries via MXC and OpenClaw
 
-![Architecture: OpenClaw inside MXC on Windows OS](image.png)
+![Architecture: OpenClaw inside MXC on Windows 11 — Azure VM deployment](images/azure/architecture.png)
 
-OpenClaw runs inside MXC containers on Windows. Multi-step agent actions are constrained by **OS-enforced boundaries**, reducing unrestricted access to the host session. Developers and IT administrators define boundary rules through MXC’s policy-driven profiles.
+*Diagram and screenshots live under [`images/`](images/). Azure captures are in `images/azure/`; AWS Linux Terraform EC2 captures are in `images/aws-linux/` (`ca-central-1`, Ubuntu 24.04, gateway port 18789).*
 
+OpenClaw runs the agent and gateway on the host; **MXC sandboxes tool and code execution** so multi-step agent actions are constrained by OS-enforced boundaries. Developers define boundary rules through MXC’s policy-driven JSON profiles.
 
-| Layer                | Role                                                                |
-| -------------------- | ------------------------------------------------------------------- |
-| **OpenClaw**         | Open-source AI agent runtime (gateway, tools, channels)             |
-| **Ollama + llama3.2:3b** | Local LLM inference (no cloud API key required)                 |
-| **MXC**              | Policy-driven, OS-level sandbox for untrusted code / tool execution |
-| **Windows 11 24H2+** | Required host OS for MXC `processcontainer` backend (Azure)       |
-| **Ubuntu 24.04+**    | Supported host OS for MXC `bubblewrap` / `lxc` backends (Linux)   |
-| **Azure VM**         | Terraform-provisioned compute in `canadacentral` (configurable)     |
-
+| Layer | Role |
+| ----- | ---- |
+| **OpenClaw** | Open-source AI agent runtime (gateway, tools, channels) |
+| **Ollama + llama3.2:3b** | Local LLM inference (no cloud API key required) |
+| **MXC** | Policy-driven sandbox for untrusted code / tool execution |
+| **Host OS** | Windows 11 24H2+ (Azure) or Ubuntu 24.04+ (AWS Linux) |
+| **Cloud VM** | Terraform-provisioned compute (Azure or AWS) |
 
 ---
 
-## What is Microsoft MXC?
+## MXC on Windows and Linux
 
-**MXC (Microsoft Execution Containers)** is a policy-driven, OS-level sandbox for running AI agents and untrusted code. It was announced at **Microsoft Build 2026** (June 2, 2026).
+**MXC (Microsoft Execution Containers)** is a cross-platform, policy-driven sandbox for running AI agents and untrusted code. It was announced at **Microsoft Build 2026** (June 2, 2026). This repo pins **`@microsoft/mxc-sdk@0.6.1`** (schema **`0.6.0-alpha`**) on both platforms.
 
-- **SDK:** `[@microsoft/mxc-sdk](https://www.npmjs.com/package/@microsoft/mxc-sdk)` (TypeScript); native runtime in [microsoft/mxc](https://github.com/microsoft/mxc)
-- **Status:** Early preview (schema ~`0.6.0-alpha`) — **do not treat MXC profiles as production security boundaries yet**
-- **Requirements:** Windows 11 Enterprise 24H2+ for `processcontainer`; Linux x64/ARM64 for `bubblewrap` or `lxc` ([platform matrix](https://github.com/microsoft/mxc#platforms))
+> **Alpha preview** — per [microsoft/mxc](https://github.com/microsoft/mxc), do **not** treat MXC profiles as production security boundaries yet.
 
-### Integration with OpenClaw
+### Platform comparison
 
-[OpenClaw](https://github.com/openclaw/openclaw) is an MXC launch partner. In this project:
+| | **Windows (Azure)** | **Linux (AWS Ubuntu)** |
+| --- | --- | --- |
+| **Terraform path** | [`terraform/`](terraform/) | [`terraform/aws/`](terraform/aws/) |
+| **Host OS** | Windows 11 Enterprise 24H2+ (build 26100+) | Ubuntu 24.04 LTS (Noble) x64 |
+| **Default MXC backend** | [`processcontainer`](https://github.com/microsoft/mxc/blob/main/docs/base-process-container/guide.md) | [`bubblewrap`](https://github.com/microsoft/mxc/blob/main/docs/bwrap-support/bubblewrap-backend.md) |
+| **Other stable backends** | — (experimental: `windows_sandbox`, `wslc`, `microvm`, …) | [`lxc`](https://github.com/microsoft/mxc/blob/main/docs/lxc-support/lxc-backend.md) |
+| **Native executor** | `wxc-exec` (bundled in SDK) | `lxc-exec` (bundled in SDK) |
+| **Runtime dependency** | Windows 11 client APIs (AppContainer / BaseContainer) | `bubblewrap` (`bwrap`) or LXC toolset |
+| **Bootstrap script** | [`scripts/bootstrap.ps1`](scripts/bootstrap.ps1) | [`scripts/bootstrap-linux.sh`](scripts/bootstrap-linux.sh) |
+| **Access** | RDP (3389) + gateway (18789) | SSH (22) + gateway (18789) |
+| **MXC config on host** | Install SDK; wire OpenClaw tools per MXC docs | [`/opt/openclaw/config/mxc/`](config/mxc/) (sample profiles) |
 
-- **OpenClaw** runs the agent and gateway
-- **Ollama** provides local inference with **llama3.2:3b** by default (configurable via `ollama_model`)
-- **MXC** sandboxes the agent’s tool and code execution (`processcontainer` on Windows, `bubblewrap` on Linux)
+Windows Server is **not** supported for client-only MXC backends such as `processcontainer`.
+
+### How OpenClaw and MXC fit together
+
+[OpenClaw](https://github.com/openclaw/openclaw) is an MXC launch partner. In both stacks:
+
+- **OpenClaw** runs the agent and gateway on the host
+- **Ollama** provides local inference with **llama3.2:3b** by default (`ollama_model`)
+- **MXC** sandboxes **tool/code execution** invoked by the agent — not the gateway or LLM itself
 
 ```
-Browser → OpenClaw Gateway → Agent → Ollama (llama3.2:3b)  ← local inference
-                               └→ MXC sandbox backend      ← tool/code sandbox
-                                 (processcontainer | bubblewrap)
+Browser → OpenClaw Gateway → Agent → Ollama (llama3.2:3b)     ← local inference (host)
+                               └→ MXC sandbox backend          ← tool/code sandbox
+                                    Windows: processcontainer
+                                    Linux:   bubblewrap | lxc
 ```
 
-Ollama listens on **localhost:11434 only** — it is not exposed in the Azure NSG.
+Ollama listens on **127.0.0.1:11434 only** — not exposed in cloud security groups.
+
+### Windows MXC details
+
+- **Backend:** `processcontainer` — stable, no nested virtualization, no experimental flag
+- **Install:** `npm install -g @microsoft/mxc-sdk@0.6.1` (via `bootstrap.ps1`)
+- **Requirements:** Windows 11 Enterprise 24H2+; Windows Server not supported for this backend
+- **Verify:** RDP to VM, review `C:\bootstrap\bootstrap.log`, confirm global npm package:
+  ```powershell
+  npm list -g @microsoft/mxc-sdk
+  ```
+- **Next step:** Configure OpenClaw tool execution to use `spawnSandboxFromConfig` from the SDK with a `processcontainer` policy (see [MXC SDK README](https://github.com/microsoft/mxc/tree/main/sdk))
+
+### Linux MXC details
+
+- **Backend:** `bubblewrap` (default) — unprivileged sandbox via user namespaces + `bwrap`
+- **Alternative:** `lxc` — separate rootfs, requires LXC toolset (set `mxc_backend = "lxc"` in `terraform/aws/`)
+- **Install:** `apt install bubblewrap uidmap` + `npm install -g @microsoft/mxc-sdk@0.6.1` (via `bootstrap-linux.sh`)
+- **Requirements:**
+  - `bwrap` on PATH (for bubblewrap)
+  - User namespaces enabled: `/proc/sys/kernel/unprivileged_userns_clone` should be `1`
+  - Node.js ≥ 18 (this repo pins **24.10.0**)
+- **Sample profiles:** [`config/mxc/`](config/mxc/) — copied to `/opt/openclaw/config/mxc/` on bootstrap
+- **Verify:**
+  ```bash
+  ./scripts/verify-mxc-linux.sh
+  # or on a bootstrapped host:
+  bash /opt/openclaw/scripts/verify-mxc-linux.sh
+  ```
+- **Smoke test manually:**
+```bash
+ARCH=x64   # or arm64 on Graviton instances
+LXC_EXEC="$(npm root -g)/@microsoft/mxc-sdk/bin/${ARCH}/lxc-exec"
+"$LXC_EXEC" config/mxc/linux-bubblewrap-lab.json
+```
+
+### Shared SDK and schema
+
+Both platforms use the same npm package and JSON policy schema:
+
+| Item | Value |
+| ---- | ----- |
+| npm package | [`@microsoft/mxc-sdk@0.6.1`](https://www.npmjs.com/package/@microsoft/mxc-sdk/v/0.6.1) |
+| Schema version | `0.6.0-alpha` |
+| TypeScript API | `spawnSandboxFromConfig`, `createConfigFromPolicy`, `getPlatformSupport`, … |
+| Upstream repo | [microsoft/mxc](https://github.com/microsoft/mxc) |
+
+Use `getPlatformSupport()` from the SDK to confirm the host OS and available backends before spawning sandboxes.
+
+---
+
+## What is Microsoft MXC? (summary)
+
+- **SDK:** [`@microsoft/mxc-sdk`](https://www.npmjs.com/package/@microsoft/mxc-sdk) (TypeScript); native binaries in [microsoft/mxc](https://github.com/microsoft/mxc)
+- **Status:** Early preview — pin versions and follow upstream release notes
+- **Platform matrix:** [github.com/microsoft/mxc#platforms](https://github.com/microsoft/mxc#platforms)
 
 ---
 
 ## What this repo deploys
 
+### Azure (Windows + MXC `processcontainer`)
 
-| Resource  | Default                                                          |
-| --------- | ---------------------------------------------------------------- |
-| Region    | `canadacentral`                                                  |
-| OS        | Windows 11 Enterprise 24H2                                       |
-| VM size   | `Standard_D4s_v3` (adjust for your quota)                        |
-| Runtime   | Node 24.10.0, `@microsoft/mxc-sdk@0.6.1`, OpenClaw 2026.6.1, Ollama 0.30.5 |
-| LLM       | `llama3.2:3b` via Ollama (`install_ollama = true`)               |
-| Network   | Public IP, NSG rules for RDP (3389) and OpenClaw gateway (18789) |
-| Bootstrap | Custom Script Extension installs gateway; Ollama model pull runs in background |
+| Resource | Default |
+| -------- | ------- |
+| Region | `canadacentral` |
+| OS | Windows 11 Enterprise 24H2 |
+| VM size | `Standard_D4s_v3` |
+| Runtime | Node 24.10.0, `@microsoft/mxc-sdk@0.6.1`, OpenClaw 2026.6.1, Ollama 0.30.5 |
+| MXC backend | `processcontainer` |
+| LLM | `llama3.2:3b` via Ollama |
+| Network | Public IP; RDP (3389) + OpenClaw gateway (18789) |
+| Bootstrap | Azure Custom Script Extension → `bootstrap.ps1` |
 
+### AWS Linux (Ubuntu + MXC `bubblewrap`)
+
+| Resource | Default |
+| -------- | ------- |
+| Region | `ca-central-1` |
+| OS | Ubuntu 24.04 LTS |
+| Instance | `c6i.2xlarge` (8 vCPU, 16 GB) |
+| Runtime | Node 24.10.0, `@microsoft/mxc-sdk@0.6.1`, OpenClaw 2026.6.1, Ollama 0.30.5 |
+| MXC backend | `bubblewrap` (or `lxc`) |
+| LLM | `llama3.2:1b` via Ollama (tool-capable) |
+| Network | Elastic IP; SSH (22) + OpenClaw gateway (18789) |
+| Bootstrap | EC2 `user_data` → `bootstrap-linux.sh` |
 
 ---
 
 ## Prerequisites
 
+### Azure (Windows)
+
 - [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) (`az login`)
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
-- Azure subscription that can deploy **Windows 11 Enterprise** images (Dev/Test, AVD licensing, or equivalent)
-- **No cloud LLM API key required** when `install_ollama = true` (default)
-- **8 GB+ RAM** recommended for `llama3.2:3b` on CPU (standard Azure SKUs have no GPU)
-- First `terraform apply` may take **30–60 minutes** while the bootstrap extension runs (Terraform polls for up to 2 hours)
+- Azure subscription that can deploy **Windows 11 Enterprise** images
+- **8 GB+ RAM** recommended for `llama3.2:3b` on CPU
+- First apply may take **30–60 minutes** (bootstrap extension)
+
+### AWS Linux (Ubuntu)
+
+- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
+- AWS credentials and an EC2 **key pair** in the target region
+- **16 GB RAM** recommended (`c6i.2xlarge` default — compute-optimized CPU for Ollama)
+- First boot may take **20–40 minutes** (npm install, MXC smoke test, Ollama model pull)
+
+### Both platforms
+
+- **No cloud LLM API key** when `install_ollama = true` (default)
+- MXC **0.6.1** / schema **0.6.0-alpha** — lab use only
 
 ---
 
@@ -112,7 +208,7 @@ terraform output
 
 ## Quick start (AWS Linux — OpenClaw + Ollama + MXC)
 
-> Terraform module is in-repo; **do not apply until ready**. Bootstrap and MXC profiles can be tested locally on Ubuntu via `scripts/bootstrap-linux.sh`.
+> Terraform module is in-repo. See [`terraform/aws/README.md`](terraform/aws/README.md) for full AWS Linux docs.
 
 ```bash
 git clone https://github.com/ai-engineering-lab/MS-MXC-OpenClaw-Ollama.git
@@ -123,50 +219,84 @@ cp terraform.tfvars.example terraform.tfvars
 
 terraform init
 terraform plan
-# terraform apply   # when ready to deploy
+terraform apply
 ```
 
-Verify MXC on an Ubuntu host (local VM or after future deploy):
+Verify MXC on an Ubuntu host (local VM or after deploy):
 
 ```bash
 ./scripts/verify-mxc-linux.sh
 ```
 
-See [`terraform/aws/README.md`](terraform/aws/README.md) for full AWS Linux docs.
+To tear down: `terraform destroy` from `terraform/aws/`.
 
 ---
 
 ## Accessing the VM and OpenClaw
 
-### RDP (macOS)
+### Azure — RDP (macOS)
 
 1. Install **Microsoft Remote Desktop** from the Mac App Store
 2. Connect to `terraform output -raw vm_public_ip` as `azureuser` with your `admin_password`
 
-### OpenClaw gateway + Ollama
+### AWS Linux — SSH
 
-On the VM:
+```bash
+cd terraform/aws
+terraform output -raw ssh_command
+cat /opt/openclaw/gateway-access.txt   # on the instance
+```
 
-1. Read `C:\openclaw\gateway-access.txt` for the gateway URL, token, and model info
-2. Confirm Ollama model pull: `Get-Content C:\bootstrap\ollama-pull.log -Tail 20`
-3. Confirm Ollama: `ollama list` (models in `C:\ollama\models`)
-4. Open the Control UI from your browser (port **18789**) and paste the gateway token
+### OpenClaw gateway + Ollama (both platforms)
+**Windows (Azure):**
 
-OpenClaw is preconfigured to use **`ollama/<ollama_model>`** (default `ollama/llama3.2:3b`) via the native Ollama API (`api: "ollama"`). Bootstrap sets `gateway.controlUi.allowedOrigins` and, for lab use, `dangerouslyDisableDeviceAuth` so the Control UI works over plain HTTP from your browser (not just localhost). For production, use HTTPS or RDP into the VM and open `http://127.0.0.1:18789` instead.
+1. Read `C:\openclaw\gateway-access.txt` for gateway URL, token, and model info
+2. Confirm Ollama pull: `Get-Content C:\bootstrap\ollama-pull.log -Tail 20`
+3. Confirm MXC SDK: `npm list -g @microsoft/mxc-sdk`
+4. Open Control UI (port **18789**), paste gateway token
 
-To use a cloud provider instead, set `install_ollama = false` in `terraform.tfvars` and add API keys to `C:\openclaw\config\.env`.
+**Linux (AWS):**
+
+1. Read `/opt/openclaw/gateway-access.txt`
+2. Confirm Ollama pull: `tail -f /var/log/openclaw-bootstrap/ollama-pull.log`
+3. Verify MXC: `./scripts/verify-mxc-linux.sh` or `bash /opt/openclaw/scripts/verify-mxc-linux.sh`
+4. Open Control UI (port **18789**), paste gateway token
+
+OpenClaw is preconfigured to use **`ollama/<ollama_model>`** (default `ollama/llama3.2:3b`) via the native Ollama API. Bootstrap sets `gateway.controlUi.allowedOrigins` and, for lab use, `dangerouslyDisableDeviceAuth` for plain HTTP access from your browser. For production, use HTTPS or connect via RDP/SSH and open `http://127.0.0.1:18789`.
+
+To use a cloud LLM instead, set `install_ollama = false` and add API keys to the host `.env` file (`C:\openclaw\config\.env` on Windows, `/opt/openclaw/config/.env` on Linux).
 
 ### OpenClaw Control UI
 
-After `terraform apply`, open the gateway URL from `terraform output` (port **18789**), paste the token from `C:\openclaw\gateway-access.txt`, and click **Connect**.
+#### Azure (Windows)
+
+After deploy, open the gateway URL from `terraform output` (port **18789**), paste the token from the gateway access file, and click **Connect**.
 
 **Overview** — gateway WebSocket URL, token auth, and live status (`OK`, uptime, tick interval):
 
-![OpenClaw Control UI — Overview dashboard with gateway access and status](image6.png)
+![OpenClaw Control UI on Azure Windows VM — Overview dashboard with gateway access and status](images/azure/control-ui-overview.png)
 
 **Chat** — talk to the assistant with local **Ollama (`llama3.2:3b`)**; workspace files (`AGENTS.md`, `SOUL.md`, etc.) appear in the sidebar:
 
-![OpenClaw Control UI — Chat with Ollama llama3.2:3b and workspace files](image5.png)
+![OpenClaw Control UI on Azure Windows VM — Chat with Ollama llama3.2:3b and workspace files](images/azure/control-ui-chat-ollama.png)
+
+#### AWS Linux (Ubuntu)
+
+Screenshots from a **Terraform EC2** deploy in `ca-central-1` (`c6i.2xlarge`, OpenClaw **2026.6.1**, gateway on port **18789**). Access is the same flow: open the Elastic IP URL, paste the gateway token, connect.
+
+**Chat — security audit** — agent runs `openclaw security audit` and reports CRITICAL/WARN findings (lab flags such as disabled device auth and world-readable config):
+
+![OpenClaw Control UI on AWS Linux EC2 — Chat security audit with workspace sidebar](images/aws-linux/control-ui-security-audit.png)
+
+**Chat — hardening** — agent applies remediation (e.g. `chmod 600` on `openclaw.json`); protected config paths may require shell access on the host:
+
+![OpenClaw Control UI on AWS Linux EC2 — Chat security hardening and gateway status](images/aws-linux/control-ui-security-hardening.png)
+
+**Chat — permissions fixed** — after exec, agent confirms config and state directory permissions were tightened:
+
+![OpenClaw Control UI on AWS Linux EC2 — Chat after config permission hardening](images/aws-linux/control-ui-security-permissions.png)
+
+Cloud LLM (e.g. **OpenAI**) can be used instead of Ollama by adding `OPENAI_API_KEY` to `/opt/openclaw/config/.env` and selecting an OpenAI model in the Control UI.
 
 ---
 
@@ -174,9 +304,15 @@ After `terraform apply`, open the gateway URL from `terraform output` (port **18
 
 ```
 .
-├── image.png                 # Architecture diagram (MXC + OpenClaw on Windows)
-├── image5.png                # OpenClaw Control UI — Chat + Ollama
-├── image6.png                # OpenClaw Control UI — Overview / gateway access
+├── images/
+│   ├── azure/                              # Windows Azure VM screenshots
+│   │   ├── architecture.png
+│   │   ├── control-ui-overview.png
+│   │   └── control-ui-chat-ollama.png
+│   └── aws-linux/                          # Terraform EC2 (Ubuntu) screenshots
+│       ├── control-ui-security-audit.png
+│       ├── control-ui-security-hardening.png
+│       └── control-ui-security-permissions.png
 ├── config/mxc/               # MXC sandbox JSON profiles (Linux bubblewrap)
 ├── dependencies.lock.json    # Pinned runtime + provider versions
 ├── instructions.txt          # Original design brief
@@ -202,13 +338,15 @@ Runtime versions are pinned for reproducible bootstrap. The canonical list is [`
 
 | Component | Pinned version | Terraform variable |
 | --------- | -------------- | ------------------ |
-| **@microsoft/mxc-sdk** | `0.6.1` | `mxc_sdk_version` |
+| **@microsoft/mxc-sdk** | `0.6.1` | `mxc_sdk_version` (both platforms) |
+| **MXC backend (Windows)** | `processcontainer` | implicit via OS / bootstrap |
+| **MXC backend (Linux)** | `bubblewrap` | `mxc_backend` in `terraform/aws/` |
 | **OpenClaw** | `2026.6.1` | `openclaw_npm_package` / `openclaw_version` |
 | **Node.js** | `24.10.0` | `node_version` |
 | **Ollama** | `0.30.5` | `ollama_version` |
 | **Git for Windows** | `2.49.0.windows.1` | `git_for_windows_version` (Azure only) |
-| **MXC backend (Linux)** | `bubblewrap` | `mxc_backend` in `terraform/aws/` |
-| **Ollama model** | `llama3.2:3b` | `ollama_model` |
+| **Ollama model (Azure)** | `llama3.2:3b` | `ollama_model` in `terraform/` |
+| **Ollama model (AWS Linux)** | `llama3.2:1b` | `ollama_model` in `terraform/aws/` |
 
 After apply, run `terraform output pinned_dependencies` to confirm what was passed to bootstrap.
 
@@ -222,7 +360,7 @@ To bump versions: update `dependencies.lock.json`, matching Terraform defaults i
 
 This is a **lab / sandbox** template, not production-hardened:
 
-- Restrict `allowed_rdp_cidr` and `allowed_gateway_cidr` to your IP — avoid `0.0.0.0/0` on the public internet
+- Restrict `allowed_rdp_cidr` / `allowed_ssh_cidr` and `allowed_gateway_cidr` to your IP — avoid `0.0.0.0/0` on the public internet
 - Never commit `terraform.tfvars` or `terraform.tfstate` (they contain secrets)
 - MXC is alpha preview; pin SDK versions and follow [microsoft/mxc](https://github.com/microsoft/mxc) guidance
 - Rotate VM password and OpenClaw gateway token if exposed
@@ -236,7 +374,11 @@ This is a **lab / sandbox** template, not production-hardened:
 - [OpenClaw Ollama provider](https://docs.openclaw.ai/providers/ollama)
 - [Ollama on Windows](https://docs.ollama.com/windows)
 - [Microsoft MXC](https://github.com/microsoft/mxc)
+- [MXC platform matrix (Windows vs Linux backends)](https://github.com/microsoft/mxc#platforms)
+- [MXC bubblewrap backend (Linux)](https://github.com/microsoft/mxc/blob/main/docs/bwrap-support/bubblewrap-backend.md)
+- [MXC processcontainer guide (Windows)](https://github.com/microsoft/mxc/blob/main/docs/base-process-container/guide.md)
 - [@microsoft/mxc-sdk on npm](https://www.npmjs.com/package/@microsoft/mxc-sdk)
+- [MXC sandbox profiles in this repo](config/mxc/)
 
 ---
 

@@ -24,7 +24,8 @@ After bootstrap or manual SDK install:
 Or directly:
 
 ```bash
-LXC_EXEC="$(find "$(npm root -g)/@microsoft/mxc-sdk" -name lxc-exec -type f | head -1)"
+ARCH=x64   # or arm64 on Graviton instances
+LXC_EXEC="$(npm root -g)/@microsoft/mxc-sdk/bin/${ARCH}/lxc-exec"
 "$LXC_EXEC" config/mxc/linux-bubblewrap-lab.json
 ```
 

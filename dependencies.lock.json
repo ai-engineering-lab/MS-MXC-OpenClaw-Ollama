@@ -23,7 +23,8 @@
       "os": "Ubuntu 24.04 LTS",
       "mxc": true,
       "mxc_backend": "bubblewrap",
-      "terraform_path": "terraform/aws/"
+      "terraform_path": "terraform/aws/",
+      "ollama_model": "llama3.2:1b"
     }
   },
   "notes": {

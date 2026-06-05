@@ -26,7 +26,7 @@ export MXC_BACKEND="${var.mxc_backend}"
 export INSTALL_MXC="${lower(tostring(var.install_mxc))}"
 ENV
 
-  user_data = join("\n", [
+  user_data_plain = join("\n", [
     "#!/bin/bash",
     "set -euo pipefail",
     "exec > >(tee -a /var/log/openclaw-ec2-user-data.log) 2>&1",
@@ -108,7 +108,8 @@ resource "aws_instance" "openclaw" {
   subnet_id              = data.aws_subnet.default.id
   vpc_security_group_ids = [aws_security_group.openclaw.id]
   key_name               = var.ec2_key_name
-  user_data              = local.user_data
+  user_data                   = base64gzip(local.user_data_plain)
+  user_data_replace_on_change = false
 
   root_block_device {
     volume_size           = var.root_volume_size_gb
@@ -126,7 +127,7 @@ resource "aws_instance" "openclaw" {
   }
 
   lifecycle {
-    ignore_changes = [ami]
+    ignore_changes = [ami, user_data]
   }
 }
 

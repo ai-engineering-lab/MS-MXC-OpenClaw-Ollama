@@ -11,9 +11,9 @@ variable "name_prefix" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type. t3.xlarge (16 GB) minimum recommended for llama3.2:3b on CPU."
+  description = "EC2 instance type. c6i.2xlarge (8 vCPU, 16 GB) recommended for llama3.2:1b on CPU."
   type        = string
-  default     = "t3.xlarge"
+  default     = "c6i.2xlarge"
 }
 
 variable "root_volume_size_gb" {
@@ -59,7 +59,7 @@ variable "install_ollama" {
 variable "ollama_model" {
   description = "Ollama model tag to pull after bootstrap."
   type        = string
-  default     = "llama3.2:3b"
+  default     = "llama3.2:1b"
 }
 
 variable "openclaw_npm_package" {
