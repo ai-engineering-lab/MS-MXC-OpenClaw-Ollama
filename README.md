@@ -1,6 +1,13 @@
-# Neuro MXC OpenClaw Azure Sandbox
+# MXC OpenClaw Azure Sandbox
 
-Deploy **OpenClaw** on **Azure** in one Terraform apply: a Windows 11 VM with **Microsoft Execution Containers (MXC)** sandboxing for safer AI agent tool execution.
+Deploy **OpenClaw** with **Ollama** on cloud VMs via Terraform. Two platform paths:
+
+| Platform | Path | OS | MXC sandbox |
+| -------- | ---- | -- | ----------- |
+| **Azure (default)** | [`terraform/`](terraform/) | Windows 11 24H2 | Yes |
+| **AWS Linux** | [`terraform/aws/`](terraform/aws/) | Ubuntu 24.04 | No |
+
+The Azure stack runs **Microsoft Execution Containers (MXC)** for safer AI agent tool execution. The AWS Linux stack runs **OpenClaw + Ollama only** (MXC requires Windows 11).
 
 **[ai-engineering-lab](https://github.com/ai-engineering-lab)**
 
@@ -78,7 +85,7 @@ Ollama listens on **localhost:11434 only** — it is not exposed in the Azure NS
 
 ---
 
-## Quick start
+## Quick start (Azure — MXC + OpenClaw)
 
 ```bash
 git clone https://github.com/ai-engineering-lab/MS-MXC-OpenClaw-Ollama.git
@@ -98,6 +105,33 @@ After apply:
 ```bash
 terraform output
 ```
+
+---
+
+## Quick start (AWS Linux — OpenClaw + Ollama)
+
+> **Feature branch:** `feature/linux-platform`. MXC is **not** available on Linux.
+
+```bash
+git clone https://github.com/ai-engineering-lab/MS-MXC-OpenClaw-Ollama.git
+cd MS-MXC-OpenClaw-Ollama/terraform/aws
+
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars: set ec2_key_name and restrict allowed_ssh_cidr / allowed_gateway_cidr
+
+terraform init
+terraform plan
+terraform apply
+```
+
+After apply:
+
+```bash
+terraform output openclaw_gateway_url
+ssh ubuntu@$(terraform output -raw public_ip) 'cat /opt/openclaw/gateway-access.txt'
+```
+
+See [`terraform/aws/README.md`](terraform/aws/README.md) for full AWS Linux docs.
 
 ---
 
@@ -145,15 +179,16 @@ After `terraform apply`, open the gateway URL from `terraform output` (port **18
 ├── dependencies.lock.json    # Pinned runtime + provider versions
 ├── instructions.txt          # Original design brief
 ├── scripts/
-│   └── bootstrap.ps1         # VM bootstrap (Node, MXC SDK, Ollama, OpenClaw gateway)
+│   ├── bootstrap.ps1         # Azure Windows bootstrap (Node, MXC SDK, Ollama, OpenClaw)
+│   └── bootstrap-linux.sh    # AWS/Linux bootstrap (Node, Ollama, OpenClaw; no MXC)
 └── terraform/
-    ├── main.tf
-    ├── network.tf
-    ├── storage.tf
-    ├── vm.tf
-    ├── variables.tf
-    ├── outputs.tf
-    └── terraform.tfvars.example
+    ├── main.tf               # Azure Windows 11 + MXC
+    ├── ...
+    └── aws/                  # AWS Ubuntu 24.04 + OpenClaw + Ollama (Linux)
+        ├── main.tf
+        ├── variables.tf
+        ├── outputs.tf
+        └── terraform.tfvars.example
 ```
 
 ---
