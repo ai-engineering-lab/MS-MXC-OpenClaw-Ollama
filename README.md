@@ -19,7 +19,7 @@ Enforcing physical boundaries via MXC and OpenClaw
 
 ![Architecture: OpenClaw inside MXC on Windows 11 — Azure VM deployment](images/azure/architecture.png)
 
-*Diagram and screenshots live under [`images/`](images/). Azure captures are in `images/azure/`; AWS Linux Terraform EC2 captures are in `images/aws-linux/` (`ca-central-1`, Ubuntu 24.04, gateway port 18789).*
+*Diagram and screenshots live under [`images/`](images/). MXC policy diagrams are in `images/mxc/`; Azure captures are in `images/azure/`; AWS Linux Terraform EC2 captures are in `images/aws-linux/` (`ca-central-1`, Ubuntu 24.04, gateway port 18789).*
 
 OpenClaw runs the agent and gateway on the host; **MXC sandboxes tool and code execution** so multi-step agent actions are constrained by OS-enforced boundaries. Developers define boundary rules through MXC’s policy-driven JSON profiles.
 
@@ -71,6 +71,10 @@ Browser → OpenClaw Gateway → Agent → Ollama (llama3.2:3b)     ← local in
 ```
 
 Ollama listens on **127.0.0.1:11434 only** — not exposed in cloud security groups.
+
+**MXC profile boundaries** — policy JSON (e.g. `linux-soc-full-app.json`) defines writable paths, read-only enforcement, and network egress inside the bubblewrap envelope:
+
+![MXC profile filesystem and network boundaries — Access Control Radar with bubblewrap envelope](images/mxc/access-control-radar.png)
 
 ### Windows MXC details
 
@@ -306,6 +310,8 @@ Cloud LLM (e.g. **OpenAI**) can be used instead of Ollama by adding `OPENAI_API_
 ```
 .
 ├── images/
+│   ├── mxc/                                # MXC policy / boundary diagrams
+│   │   └── access-control-radar.png
 │   ├── azure/                              # Windows Azure VM screenshots
 │   │   ├── architecture.png
 │   │   ├── control-ui-overview.png
@@ -391,4 +397,4 @@ See repository license. Third-party components (OpenClaw, MXC SDK, Azure images)
 
 ---
 
-Designed by Dang-Tue Hoang, AI/ML Engineer
+Designed by Dang Hoang, AI/ML Engineer
